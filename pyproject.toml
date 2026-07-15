@@ -4,13 +4,17 @@ version = "0.1.0"
 description = "Lightweight local voice assistant"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
-dependencies = []
+dependencies = [
+    "numpy>=2.5.1",
+    "sounddevice>=0.5.5",
+]
 
 [project.scripts]
 assistant = "assistant.__main__:main"
 
 [dependency-groups]
 dev = [
+    "mypy>=1.18.1",
     "pre-commit>=4.6.0",
     "ruff>=0.15.20",
 ]
@@ -47,3 +51,16 @@ quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
 docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+pretty = true
+show_error_codes = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "sounddevice.*"
+ignore_missing_imports = true

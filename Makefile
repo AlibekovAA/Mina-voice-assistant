@@ -1,17 +1,16 @@
-.PHONY: install format lint check
+.PHONY: install fix check run
 
 install:
 	uv sync
 
-format:
+fix:
+	uv run ruff check --fix .
 	uv run ruff format .
-
-lint:
-	uv run ruff check .
 
 check:
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run mypy src
 
 run:
 	uv run python -m assistant
