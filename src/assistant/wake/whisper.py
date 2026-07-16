@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from difflib import SequenceMatcher
 import threading
 import time
@@ -10,13 +8,23 @@ from numpy.typing import NDArray
 from assistant.audio.dsp import rms, to_mono
 from assistant.audio.models import AudioData, AudioFormat
 from assistant.audio.ring_buffer import RingBuffer
-from assistant.config import STT_SAMPLE_RATE, WakeConfig
+from assistant.config import WakeConfig
+from assistant.constants import (
+    STT_SAMPLE_RATE,
+    WAKE_KEYWORD_MIN_CHARS,
+    WAKE_MATCH_RATIO,
+    WAKE_NOISE_EMA_ALPHA,
+    WAKE_NOISE_EMA_BASE,
+    WAKE_NOISE_FLOOR_MIN,
+    WAKE_NOISE_QUIET_FACTOR,
+    WAKE_NOISE_RMS_INITIAL,
+)
 from assistant.logger import Logger
 from assistant.stt import SpeechToText, TranscribeOptions
 from assistant.wake.exceptions import WakeError, WakeNotReadyError
 from assistant.wake.models import WakeDetection
 
-_MATCH_RATIO = 0.72
+_LOG = Logger.get(__name__)
 
 
 class WhisperWakeWord:
@@ -30,14 +38,13 @@ class WhisperWakeWord:
         self._config = config
         self._stt = stt
         self._stop_event = stop_event
-        self._logger = Logger.get(__name__)
         self._keyword = _normalize_text(config.keyword)
         self._format = AudioFormat(sample_rate=STT_SAMPLE_RATE, channels=1)
         self._window_samples = int(config.window_seconds * STT_SAMPLE_RATE)
         self._hop_samples = int(config.hop_seconds * STT_SAMPLE_RATE)
         self._buffer = RingBuffer(self._window_samples)
         self._samples_since_check = 0
-        self._noise_rms = 0.005
+        self._noise_rms = WAKE_NOISE_RMS_INITIAL
         self._ready = False
         self._transcribe_options = TranscribeOptions(
             vad_filter=config.vad_filter,
@@ -66,7 +73,7 @@ class WhisperWakeWord:
 
         self.reset()
         self._ready = True
-        self._logger.info(
+        _LOG.info(
             "Wake word ready: %r (window=%.1fs, hop=%.1fs)",
             self._config.keyword,
             self._config.window_seconds,
@@ -103,9 +110,7 @@ class WhisperWakeWord:
 
         self._samples_since_check = 0
         window = self._buffer.snapshot()
-        self._update_noise_floor(window)
-
-        if not self._has_speech_energy(window):
+        if not self._update_energy_gate(window):
             return None
 
         if self._should_stop():
@@ -120,28 +125,26 @@ class WhisperWakeWord:
         text = _normalize_text(transcript.text)
 
         if not text:
-            self._logger.debug("Wake check empty (%.2fs)", elapsed)
+            _LOG.debug("Wake check empty (%.2fs)", elapsed)
             return None
 
         if self._contains_keyword(text):
-            self._logger.info("Wake check match (%.2fs): %r", elapsed, transcript.text)
+            _LOG.info("Wake check match (%.2fs): %r", elapsed, transcript.text)
             self.reset()
             return WakeDetection(keyword=self._config.keyword)
 
-        self._logger.debug("Wake check miss (%.2fs): %r", elapsed, transcript.text)
+        _LOG.debug("Wake check miss (%.2fs): %r", elapsed, transcript.text)
         return None
 
-    def _update_noise_floor(self, samples: NDArray[np.float32]) -> None:
-        recent = samples[-min(samples.shape[0], self._hop_samples) :]
-        recent_rms = rms(recent)
-
-        if recent_rms < self._noise_rms * 1.8:
-            self._noise_rms = (0.95 * self._noise_rms) + (0.05 * max(recent_rms, 1e-6))
-
-    def _has_speech_energy(self, samples: NDArray[np.float32]) -> bool:
+    def _update_energy_gate(self, samples: NDArray[np.float32]) -> bool:
         recent = samples[-min(samples.shape[0], self._hop_samples) :]
         recent_rms = rms(recent)
         peak = float(np.max(np.abs(recent))) if recent.size else 0.0
+
+        if recent_rms < self._noise_rms * WAKE_NOISE_QUIET_FACTOR:
+            self._noise_rms = (WAKE_NOISE_EMA_BASE * self._noise_rms) + (
+                WAKE_NOISE_EMA_ALPHA * max(recent_rms, WAKE_NOISE_FLOOR_MIN)
+            )
 
         dynamic_threshold = max(
             self._config.listen_rms_threshold,
@@ -160,19 +163,19 @@ class WhisperWakeWord:
             return True
 
         for word in text.split():
-            if SequenceMatcher(None, word, self._keyword).ratio() >= _MATCH_RATIO:
+            if SequenceMatcher(None, word, self._keyword).ratio() >= WAKE_MATCH_RATIO:
                 return True
 
         keyword_len = len(compact_keyword)
-        if keyword_len < 3 or len(compact_text) < keyword_len - 1:
+        if keyword_len < WAKE_KEYWORD_MIN_CHARS or len(compact_text) < keyword_len - 1:
             return False
 
         for size in {keyword_len - 1, keyword_len, keyword_len + 1}:
-            if size < 3:
+            if size < WAKE_KEYWORD_MIN_CHARS:
                 continue
             for index in range(0, len(compact_text) - size + 1):
                 piece = compact_text[index : index + size]
-                if SequenceMatcher(None, piece, compact_keyword).ratio() >= _MATCH_RATIO:
+                if SequenceMatcher(None, piece, compact_keyword).ratio() >= WAKE_MATCH_RATIO:
                     return True
 
         return False

@@ -1,20 +1,20 @@
-from __future__ import annotations
-
 import numpy as np
 from numpy.typing import NDArray
 
 from assistant.audio.exceptions import AudioError
+from assistant.constants import SPEECH_TRIM_PAD_SECONDS, SPEECH_TRIM_WINDOW_SECONDS
 
 
 def to_mono(samples: NDArray[np.float32]) -> NDArray[np.float32]:
     data = np.asarray(samples, dtype=np.float32)
 
     if data.ndim == 1:
-        return np.ascontiguousarray(data)
+        return data if data.flags.c_contiguous else np.ascontiguousarray(data)
 
     if data.ndim == 2:
         if data.shape[1] == 1:
-            return np.ascontiguousarray(data[:, 0])
+            channel = data[:, 0]
+            return channel if channel.flags.c_contiguous else np.ascontiguousarray(channel)
         return np.ascontiguousarray(data.mean(axis=1, dtype=np.float32))
 
     raise AudioError(f"Unsupported audio shape: {data.shape}")
@@ -31,25 +31,24 @@ def trim_silence(
     *,
     threshold: float,
     sample_rate: int,
-    pad_seconds: float = 0.2,
+    pad_seconds: float = SPEECH_TRIM_PAD_SECONDS,
 ) -> NDArray[np.float32]:
     data = to_mono(samples)
     if data.size == 0:
         return data
 
-    window = max(1, int(sample_rate * 0.02))
+    window = max(1, int(sample_rate * SPEECH_TRIM_WINDOW_SECONDS))
     pad = max(0, int(sample_rate * pad_seconds))
-    energies = [
-        float(np.sqrt(np.mean(np.square(data[index : index + window])))) for index in range(0, data.size, window)
-    ]
-
-    if not energies:
+    frame_count = data.size // window
+    if frame_count == 0:
         return data
 
-    active = [index for index, energy in enumerate(energies) if energy >= threshold]
-    if not active:
+    frames = data[: frame_count * window].reshape(frame_count, window)
+    energies = np.sqrt(np.mean(np.square(frames), axis=1))
+    active = np.flatnonzero(energies >= threshold)
+    if active.size == 0:
         return data
 
-    start = max(0, active[0] * window - pad)
-    end = min(data.size, (active[-1] + 1) * window + pad)
+    start = max(0, int(active[0]) * window - pad)
+    end = min(data.size, (int(active[-1]) + 1) * window + pad)
     return np.ascontiguousarray(data[start:end])

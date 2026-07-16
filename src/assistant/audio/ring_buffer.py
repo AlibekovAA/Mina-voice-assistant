@@ -1,7 +1,7 @@
-from __future__ import annotations
-
 import numpy as np
 from numpy.typing import NDArray
+
+from assistant.constants import EMPTY_AUDIO_BUFFER
 
 
 class RingBuffer:
@@ -27,32 +27,37 @@ class RingBuffer:
         self._end = 0
 
     def extend(self, samples: NDArray[np.float32]) -> None:
-        data = np.asarray(samples, dtype=np.float32).reshape(-1)
+        data = np.asarray(samples, dtype=np.float32).ravel()
         if data.size == 0:
             return
 
-        if data.size >= self._capacity:
-            self._buffer[:] = data[-self._capacity :]
-            self._size = self._capacity
+        buffer = self._buffer
+        capacity = self._capacity
+
+        if data.size >= capacity:
+            buffer[:] = data[-capacity:]
+            self._size = capacity
             self._end = 0
             return
 
-        first = min(data.size, self._capacity - self._end)
-        self._buffer[self._end : self._end + first] = data[:first]
+        end = self._end
+        first = min(data.size, capacity - end)
+        buffer[end : end + first] = data[:first]
 
-        remaining = data.size - first
-        if remaining:
-            self._buffer[:remaining] = data[first:]
+        if first < data.size:
+            buffer[: data.size - first] = data[first:]
 
-        self._end = (self._end + data.size) % self._capacity
-        self._size = min(self._capacity, self._size + data.size)
+        self._end = (end + data.size) % capacity
+        self._size = min(capacity, self._size + data.size)
 
     def snapshot(self) -> NDArray[np.float32]:
-        if self._size == 0:
-            return np.empty(0, dtype=np.float32)
+        size = self._size
+        if size == 0:
+            return EMPTY_AUDIO_BUFFER
 
-        if self._size < self._capacity:
-            return np.ascontiguousarray(self._buffer[: self._size])
+        buffer = self._buffer
+        if size < self._capacity:
+            return buffer[:size].copy()
 
         start = self._end
-        return np.ascontiguousarray(np.concatenate((self._buffer[start:], self._buffer[:start])))
+        return np.concatenate((buffer[start:], buffer[:start]))

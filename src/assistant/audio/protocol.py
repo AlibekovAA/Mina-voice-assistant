@@ -1,8 +1,9 @@
-from __future__ import annotations
-
+from collections.abc import Callable
 from typing import Protocol
 
 from assistant.audio.models import AudioData, AudioFormat
+
+LevelCallback = Callable[[float], None]
 
 
 class AudioCapture(Protocol):
@@ -31,6 +32,7 @@ class AudioPlayback(Protocol):
         audio: AudioData,
         *,
         device: int | None = None,
+        on_level: LevelCallback | None = None,
     ) -> None: ...
 
     def stop(self) -> None: ...

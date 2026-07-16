@@ -1,12 +1,55 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 import os
 
-from assistant.core.exceptions import ConfigurationError
+from dotenv import load_dotenv
 
-STT_SAMPLE_RATE = 16_000
+from assistant.constants import (
+    APP_NAME,
+    AUDIO_DEFAULT_BLOCKSIZE,
+    AUDIO_DEFAULT_CHANNELS,
+    FALLBACK_VERSION,
+    GIGACHAT_DEFAULT_MAX_TOKENS,
+    GIGACHAT_DEFAULT_MODEL,
+    GIGACHAT_DEFAULT_SCOPE,
+    GIGACHAT_DEFAULT_TEMPERATURE,
+    GIGACHAT_DEFAULT_TIMEOUT_SECONDS,
+    GIGACHAT_DEFAULT_VERIFY_SSL,
+    PACKAGE_NAME,
+    SPEECH_DEFAULT_MAX_SECONDS,
+    SPEECH_DEFAULT_MIN_SECONDS,
+    SPEECH_DEFAULT_ONSET_SECONDS,
+    SPEECH_DEFAULT_RMS,
+    SPEECH_DEFAULT_SILENCE_SECONDS,
+    STT_SAMPLE_RATE,
+    TTS_DEFAULT_RATE,
+    TTS_DEFAULT_SAMPLE_RATE,
+    TTS_DEFAULT_VOICE,
+    WAKE_DEFAULT_BEAM_SIZE,
+    WAKE_DEFAULT_HOP_SECONDS,
+    WAKE_DEFAULT_KEYWORD,
+    WAKE_DEFAULT_LISTEN_PEAK,
+    WAKE_DEFAULT_LISTEN_RMS,
+    WAKE_DEFAULT_LISTEN_SNR,
+    WAKE_DEFAULT_NO_SPEECH,
+    WAKE_DEFAULT_POST_PRUNE_SECONDS,
+    WAKE_DEFAULT_VAD_FILTER,
+    WAKE_DEFAULT_WINDOW_SECONDS,
+    WEATHER_DEFAULT_CITY,
+    WEATHER_DEFAULT_TIMEZONE,
+    WHISPER_DEFAULT_BEAM_SIZE,
+    WHISPER_DEFAULT_COMPUTE_TYPE,
+    WHISPER_DEFAULT_CPU_THREADS,
+    WHISPER_DEFAULT_DEVICE,
+    WHISPER_DEFAULT_LANGUAGE,
+    WHISPER_DEFAULT_MODEL,
+    WHISPER_DEFAULT_NO_SPEECH,
+    WHISPER_DEFAULT_TEMPERATURE,
+    WHISPER_DEFAULT_VAD_FILTER,
+    GigaChatScope,
+    WhisperDevice,
+)
+from assistant.core.exceptions import ConfigurationError
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,63 +57,82 @@ class AudioConfig:
     input_device: int | None = None
     output_device: int | None = None
     sample_rate: int = STT_SAMPLE_RATE
-    channels: int = 1
-    blocksize: int = 1024
+    channels: int = AUDIO_DEFAULT_CHANNELS
+    blocksize: int = AUDIO_DEFAULT_BLOCKSIZE
 
 
 @dataclass(frozen=True, slots=True)
 class SttConfig:
-    model: str = "small"
-    language: str = "ru"
-    device: str = "auto"
-    compute_type: str = "auto"
-    beam_size: int = 8
-    vad_filter: bool = True
-    temperature: float = 0.0
-    no_speech_threshold: float = 0.5
-    cpu_threads: int = 0
+    model: str = WHISPER_DEFAULT_MODEL
+    language: str = WHISPER_DEFAULT_LANGUAGE
+    device: str = WHISPER_DEFAULT_DEVICE
+    compute_type: str = WHISPER_DEFAULT_COMPUTE_TYPE
+    beam_size: int = WHISPER_DEFAULT_BEAM_SIZE
+    vad_filter: bool = WHISPER_DEFAULT_VAD_FILTER
+    temperature: float = WHISPER_DEFAULT_TEMPERATURE
+    no_speech_threshold: float = WHISPER_DEFAULT_NO_SPEECH
+    cpu_threads: int = WHISPER_DEFAULT_CPU_THREADS
     download_root: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class WakeConfig:
-    keyword: str = "мина"
-    window_seconds: float = 2.0
-    hop_seconds: float = 1.0
-    listen_rms_threshold: float = 0.008
-    listen_peak_threshold: float = 0.02
-    listen_snr: float = 2.5
-    post_wake_prune_seconds: float = 0.35
-    beam_size: int = 5
-    vad_filter: bool = True
-    no_speech_threshold: float = 0.7
+    keyword: str = WAKE_DEFAULT_KEYWORD
+    window_seconds: float = WAKE_DEFAULT_WINDOW_SECONDS
+    hop_seconds: float = WAKE_DEFAULT_HOP_SECONDS
+    listen_rms_threshold: float = WAKE_DEFAULT_LISTEN_RMS
+    listen_peak_threshold: float = WAKE_DEFAULT_LISTEN_PEAK
+    listen_snr: float = WAKE_DEFAULT_LISTEN_SNR
+    post_wake_prune_seconds: float = WAKE_DEFAULT_POST_PRUNE_SECONDS
+    beam_size: int = WAKE_DEFAULT_BEAM_SIZE
+    vad_filter: bool = WAKE_DEFAULT_VAD_FILTER
+    no_speech_threshold: float = WAKE_DEFAULT_NO_SPEECH
 
 
 @dataclass(frozen=True, slots=True)
 class UtteranceConfig:
-    speech_rms_threshold: float = 0.008
-    speech_onset_seconds: float = 0.15
-    min_speech_seconds: float = 0.5
-    silence_seconds: float = 1.2
-    utterance_max_seconds: float = 12.0
+    speech_rms_threshold: float = SPEECH_DEFAULT_RMS
+    speech_onset_seconds: float = SPEECH_DEFAULT_ONSET_SECONDS
+    min_speech_seconds: float = SPEECH_DEFAULT_MIN_SECONDS
+    silence_seconds: float = SPEECH_DEFAULT_SILENCE_SECONDS
+    utterance_max_seconds: float = SPEECH_DEFAULT_MAX_SECONDS
 
 
 @dataclass(frozen=True, slots=True)
 class TtsConfig:
-    voice: str = "ru-RU-SvetlanaNeural"
-    rate: str = "+0%"
-    sample_rate: int = 24_000
+    voice: str = TTS_DEFAULT_VOICE
+    rate: str = TTS_DEFAULT_RATE
+    sample_rate: int = TTS_DEFAULT_SAMPLE_RATE
+
+
+@dataclass(frozen=True, slots=True)
+class GigaChatConfig:
+    credentials: str
+    scope: str = GIGACHAT_DEFAULT_SCOPE
+    model: str = GIGACHAT_DEFAULT_MODEL
+    verify_ssl_certs: bool = GIGACHAT_DEFAULT_VERIFY_SSL
+    timeout_seconds: float = GIGACHAT_DEFAULT_TIMEOUT_SECONDS
+    temperature: float = GIGACHAT_DEFAULT_TEMPERATURE
+    max_tokens: int = GIGACHAT_DEFAULT_MAX_TOKENS
+
+
+@dataclass(frozen=True, slots=True)
+class ToolsConfig:
+    default_city: str = WEATHER_DEFAULT_CITY
+    default_timezone: str = WEATHER_DEFAULT_TIMEZONE
 
 
 @dataclass(frozen=True, slots=True)
 class Config:
-    app_name: str = "Мина"
-    app_version: str = "0.0.0"
+    app_name: str = APP_NAME
+    app_version: str = FALLBACK_VERSION
     audio: AudioConfig = field(default_factory=AudioConfig)
     stt: SttConfig = field(default_factory=SttConfig)
     wake: WakeConfig = field(default_factory=WakeConfig)
     utterance: UtteranceConfig = field(default_factory=UtteranceConfig)
     tts: TtsConfig = field(default_factory=TtsConfig)
+    gigachat: GigaChatConfig = field(default_factory=lambda: GigaChatConfig(credentials=""))
+    tools: ToolsConfig = field(default_factory=ToolsConfig)
 
 
 _DEFAULT_AUDIO = AudioConfig()
@@ -78,9 +140,12 @@ _DEFAULT_STT = SttConfig()
 _DEFAULT_WAKE = WakeConfig()
 _DEFAULT_UTTERANCE = UtteranceConfig()
 _DEFAULT_TTS = TtsConfig()
+_DEFAULT_GIGACHAT = GigaChatConfig(credentials="")
+_DEFAULT_TOOLS = ToolsConfig()
 
 
 def load_config() -> Config:
+    load_dotenv()
     try:
         audio = AudioConfig(
             input_device=_optional_int("ASSISTANT_INPUT_DEVICE"),
@@ -90,12 +155,14 @@ def load_config() -> Config:
             blocksize=_int("ASSISTANT_BLOCKSIZE", _DEFAULT_AUDIO.blocksize),
         )
         language = _str("ASSISTANT_STT_LANGUAGE", _DEFAULT_STT.language)
-        if language.lower() != "ru":
-            raise ConfigurationError(f"Unsupported ASSISTANT_STT_LANGUAGE: {language!r} (only 'ru' is supported)")
+        if language.lower() != WHISPER_DEFAULT_LANGUAGE:
+            raise ConfigurationError(
+                f"Unsupported ASSISTANT_STT_LANGUAGE: {language!r} (only {WHISPER_DEFAULT_LANGUAGE!r} is supported)"
+            )
 
         stt = SttConfig(
             model=_non_empty("ASSISTANT_WHISPER_MODEL", _DEFAULT_STT.model),
-            language="ru",
+            language=WHISPER_DEFAULT_LANGUAGE,
             device=_str("ASSISTANT_WHISPER_DEVICE", _DEFAULT_STT.device),
             compute_type=_str("ASSISTANT_WHISPER_COMPUTE_TYPE", _DEFAULT_STT.compute_type) or _DEFAULT_STT.compute_type,
             beam_size=_int("ASSISTANT_WHISPER_BEAM_SIZE", _DEFAULT_STT.beam_size),
@@ -113,7 +180,8 @@ def load_config() -> Config:
             listen_peak_threshold=_float("ASSISTANT_WAKE_LISTEN_PEAK", _DEFAULT_WAKE.listen_peak_threshold),
             listen_snr=_float("ASSISTANT_WAKE_LISTEN_SNR", _DEFAULT_WAKE.listen_snr),
             post_wake_prune_seconds=_float(
-                "ASSISTANT_WAKE_POST_WAKE_PRUNE_SECONDS", _DEFAULT_WAKE.post_wake_prune_seconds
+                "ASSISTANT_WAKE_POST_WAKE_PRUNE_SECONDS",
+                _DEFAULT_WAKE.post_wake_prune_seconds,
             ),
             beam_size=_int("ASSISTANT_WAKE_BEAM_SIZE", _DEFAULT_WAKE.beam_size),
             vad_filter=_bool("ASSISTANT_WAKE_VAD_FILTER", _DEFAULT_WAKE.vad_filter),
@@ -137,6 +205,25 @@ def load_config() -> Config:
             rate=_str("ASSISTANT_TTS_RATE", _DEFAULT_TTS.rate) or _DEFAULT_TTS.rate,
             sample_rate=_int("ASSISTANT_TTS_SAMPLE_RATE", _DEFAULT_TTS.sample_rate),
         )
+        gigachat = GigaChatConfig(
+            credentials=_required_secret("ASSISTANT_GIGACHAT_CREDENTIALS"),
+            scope=_non_empty("ASSISTANT_GIGACHAT_SCOPE", _DEFAULT_GIGACHAT.scope),
+            model=_non_empty("ASSISTANT_GIGACHAT_MODEL", _DEFAULT_GIGACHAT.model),
+            verify_ssl_certs=_bool(
+                "ASSISTANT_GIGACHAT_VERIFY_SSL",
+                _DEFAULT_GIGACHAT.verify_ssl_certs,
+            ),
+            timeout_seconds=_float(
+                "ASSISTANT_GIGACHAT_TIMEOUT_SECONDS",
+                _DEFAULT_GIGACHAT.timeout_seconds,
+            ),
+            temperature=_float("ASSISTANT_GIGACHAT_TEMPERATURE", _DEFAULT_GIGACHAT.temperature),
+            max_tokens=_int("ASSISTANT_GIGACHAT_MAX_TOKENS", _DEFAULT_GIGACHAT.max_tokens),
+        )
+        tools = ToolsConfig(
+            default_city=_non_empty("ASSISTANT_DEFAULT_CITY", _DEFAULT_TOOLS.default_city),
+            default_timezone=_non_empty("ASSISTANT_DEFAULT_TIMEZONE", _DEFAULT_TOOLS.default_timezone),
+        )
     except ValueError as error:
         raise ConfigurationError(f"Invalid configuration: {error}") from error
 
@@ -145,6 +232,7 @@ def load_config() -> Config:
     _validate_wake(wake)
     _validate_utterance(utterance)
     _validate_tts(tts)
+    _validate_gigachat(gigachat)
 
     return Config(
         app_version=_package_version(),
@@ -153,6 +241,8 @@ def load_config() -> Config:
         wake=wake,
         utterance=utterance,
         tts=tts,
+        gigachat=gigachat,
+        tools=tools,
     )
 
 
@@ -168,7 +258,7 @@ def _validate_audio(audio: AudioConfig) -> None:
 
 
 def _validate_stt(stt: SttConfig) -> None:
-    if stt.device not in {"auto", "cpu", "cuda"}:
+    if stt.device not in WhisperDevice:
         raise ConfigurationError(f"Invalid ASSISTANT_WHISPER_DEVICE: {stt.device!r}")
     _require_positive_int("ASSISTANT_WHISPER_BEAM_SIZE", stt.beam_size)
     if stt.cpu_threads < 0:
@@ -205,6 +295,24 @@ def _validate_tts(tts: TtsConfig) -> None:
     _require_positive_int("ASSISTANT_TTS_SAMPLE_RATE", tts.sample_rate)
 
 
+def _validate_gigachat(gigachat: GigaChatConfig) -> None:
+    if gigachat.scope not in GigaChatScope:
+        raise ConfigurationError(f"Invalid ASSISTANT_GIGACHAT_SCOPE: {gigachat.scope!r}")
+    _require_positive("ASSISTANT_GIGACHAT_TIMEOUT_SECONDS", gigachat.timeout_seconds)
+    if not 0 <= gigachat.temperature <= 2:
+        raise ConfigurationError(f"Invalid ASSISTANT_GIGACHAT_TEMPERATURE: {gigachat.temperature}")
+    _require_positive_int("ASSISTANT_GIGACHAT_MAX_TOKENS", gigachat.max_tokens)
+
+
+def _required_secret(name: str) -> str:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        raise ConfigurationError(
+            f"{name} is required. Set it to the GigaChat Authorization Key (base64 Client ID:Client Secret)."
+        )
+    return value.strip()
+
+
 def _require_positive(name: str, value: float) -> None:
     if value <= 0:
         raise ConfigurationError(f"Invalid {name}: {value}")
@@ -222,9 +330,9 @@ def _require_unit_interval(name: str, value: float) -> None:
 
 def _package_version() -> str:
     try:
-        return version("assistant")
+        return version(PACKAGE_NAME)
     except PackageNotFoundError:
-        return "0.0.0"
+        return FALLBACK_VERSION
 
 
 def _optional_int(name: str) -> int | None:

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 import threading
 import time
@@ -11,7 +9,10 @@ from numpy.typing import NDArray
 from assistant.audio.dsp import rms, to_mono, trim_silence
 from assistant.audio.models import AudioData, AudioFormat
 from assistant.config import UtteranceConfig
+from assistant.constants import SPEECH_TRIM_PAD_SECONDS, SPEECH_TRIM_THRESHOLD_FACTOR
 from assistant.logger import Logger
+
+_LOG = Logger.get(__name__)
 
 
 class ReadAudio(Protocol):
@@ -21,7 +22,6 @@ class ReadAudio(Protocol):
 class UtteranceCapture:
     def __init__(self, config: UtteranceConfig) -> None:
         self._config = config
-        self._logger = Logger.get(__name__)
 
     def capture(
         self,
@@ -53,12 +53,12 @@ class UtteranceCapture:
         raw = np.concatenate(chunks, axis=0)
         trimmed = trim_silence(
             raw,
-            threshold=self._config.speech_rms_threshold * 0.7,
+            threshold=self._config.speech_rms_threshold * SPEECH_TRIM_THRESHOLD_FACTOR,
             sample_rate=audio_format.sample_rate,
-            pad_seconds=0.25,
+            pad_seconds=SPEECH_TRIM_PAD_SECONDS,
         )
         duration = float(trimmed.shape[0] / audio_format.sample_rate)
-        self._logger.info("Captured utterance: %.2fs", duration)
+        _LOG.info("Captured utterance: %.2fs", duration)
 
         if trimmed.size == 0:
             return None

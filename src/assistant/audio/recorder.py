@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import queue
 
@@ -9,12 +7,18 @@ import sounddevice as sd
 
 from assistant.audio.exceptions import AudioRecordingError
 from assistant.audio.models import AudioData, AudioFormat
+from assistant.constants import (
+    AUDIO_DEFAULT_BLOCKSIZE,
+    AUDIO_DEFAULT_CAPTURE_QUEUE_SIZE,
+    AUDIO_DEFAULT_READ_TIMEOUT_SECONDS,
+)
 from assistant.logger import Logger
+
+_LOG = Logger.get(__name__)
 
 
 class AudioRecorder:
-    def __init__(self, *, queue_size: int = 64) -> None:
-        self._logger = Logger.get(__name__)
+    def __init__(self, *, queue_size: int = AUDIO_DEFAULT_CAPTURE_QUEUE_SIZE) -> None:
         self._queue: queue.Queue[NDArray[np.float32]] = queue.Queue(maxsize=queue_size)
         self._stream: sd.InputStream | None = None
         self._format: AudioFormat | None = None
@@ -32,7 +36,7 @@ class AudioRecorder:
         audio_format: AudioFormat,
         *,
         device: int | None = None,
-        blocksize: int = 1024,
+        blocksize: int = AUDIO_DEFAULT_BLOCKSIZE,
     ) -> None:
         audio_format.validate()
 
@@ -64,7 +68,7 @@ class AudioRecorder:
                 f"channels={audio_format.channels}, blocksize={blocksize}): {error}"
             ) from error
 
-    def read(self, *, timeout: float | None = 0.1) -> AudioData | None:
+    def read(self, *, timeout: float | None = AUDIO_DEFAULT_READ_TIMEOUT_SECONDS) -> AudioData | None:
         if self._format is None:
             raise AudioRecordingError("Recording stream is not started")
 
@@ -100,7 +104,7 @@ class AudioRecorder:
         status: object,
     ) -> None:
         if status:
-            self._logger.warning("Input stream status: %s", status)
+            _LOG.warning("Input stream status: %s", status)
 
         samples = indata.copy()
 
@@ -113,7 +117,7 @@ class AudioRecorder:
             try:
                 self._queue.put_nowait(samples)
             except queue.Full:
-                self._logger.warning("Dropping audio chunk: capture queue is full")
+                _LOG.error("Dropping audio chunk: capture queue is full")
 
     def _clear_queue(self) -> None:
         while True:

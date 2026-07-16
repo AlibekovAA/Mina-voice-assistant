@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from assistant.core.application import Application
 
 

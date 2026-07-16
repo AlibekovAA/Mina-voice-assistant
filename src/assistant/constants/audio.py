@@ -1,0 +1,22 @@
+from typing import Final
+
+import numpy as np
+from numpy.typing import NDArray
+
+STT_SAMPLE_RATE: Final[int] = 16_000
+AUDIO_DEFAULT_CHANNELS: Final[int] = 1
+AUDIO_DEFAULT_BLOCKSIZE: Final[int] = 1024
+AUDIO_DEFAULT_CAPTURE_QUEUE_SIZE: Final[int] = 64
+AUDIO_DEFAULT_READ_TIMEOUT_SECONDS: Final[float] = 0.1
+AUDIO_LEVEL_CALLBACK_STRIDE: Final[int] = 2
+EMPTY_AUDIO_BUFFER: Final[NDArray[np.float32]] = np.empty(0, dtype=np.float32)
+
+__all__ = (
+    "AUDIO_DEFAULT_BLOCKSIZE",
+    "AUDIO_DEFAULT_CAPTURE_QUEUE_SIZE",
+    "AUDIO_DEFAULT_CHANNELS",
+    "AUDIO_DEFAULT_READ_TIMEOUT_SECONDS",
+    "AUDIO_LEVEL_CALLBACK_STRIDE",
+    "EMPTY_AUDIO_BUFFER",
+    "STT_SAMPLE_RATE",
+)

@@ -1,27 +1,30 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
+from faster_whisper import WhisperModel
 import numpy as np
 from numpy.typing import NDArray
 
 from assistant.audio.dsp import to_mono
 from assistant.audio.models import AudioData
-from assistant.config import STT_SAMPLE_RATE, SttConfig
+from assistant.config import SttConfig
+from assistant.constants import (
+    STT_SAMPLE_RATE,
+    WHISPER_COMPRESSION_RATIO_THRESHOLD,
+    WHISPER_CPU_COMPUTE_TYPE,
+    WHISPER_CUDA_COMPUTE_TYPE,
+    WHISPER_LOG_PROB_THRESHOLD,
+    WhisperComputeType,
+    WhisperDevice,
+)
 from assistant.logger import Logger
 from assistant.stt.exceptions import SttError, SttNotReadyError
-from assistant.stt.models import TranscribeOptions, Transcript, TranscriptSegment
-
-if TYPE_CHECKING:
-    from faster_whisper import WhisperModel
+from assistant.stt.models import TranscribeOptions, Transcript
 
 _WHISPER_ERRORS = (RuntimeError, ValueError, OSError, MemoryError)
+_LOG = Logger.get(__name__)
 
 
 class WhisperStt:
     def __init__(self, config: SttConfig) -> None:
         self._config = config
-        self._logger = Logger.get(__name__)
         self._model: WhisperModel | None = None
 
     @property
@@ -32,15 +35,10 @@ class WhisperStt:
         if self._model is not None:
             return
 
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError as error:
-            raise SttError("faster-whisper is not installed. Run: uv sync") from error
-
         last_error: Exception | None = None
 
         for device, compute_type in self._device_candidates():
-            self._logger.info(
+            _LOG.info(
                 "Loading Whisper model=%s device=%s compute_type=%s",
                 self._config.model,
                 device,
@@ -59,8 +57,8 @@ class WhisperStt:
                 self._model = None
                 last_error = error
 
-                if device == "cuda" and self._config.device == "auto":
-                    self._logger.warning(
+                if device == WhisperDevice.CUDA and self._config.device == WhisperDevice.AUTO:
+                    _LOG.warning(
                         "CUDA load failed (%s), falling back to CPU",
                         error,
                     )
@@ -71,7 +69,7 @@ class WhisperStt:
                     f"(device={device}, compute_type={compute_type}): {error}"
                 ) from error
 
-            self._logger.info("Whisper model loaded on %s (%s)", device, compute_type)
+            _LOG.info("Whisper model loaded on %s (%s)", device, compute_type)
             return
 
         raise SttError(f"Failed to load Whisper model {self._config.model!r}: {last_error}") from last_error
@@ -85,7 +83,7 @@ class WhisperStt:
 
         samples = self._prepare_samples(audio)
         if samples.size == 0:
-            return Transcript(text="", language=self._config.language, segments=(), duration=0.0)
+            return Transcript(text="")
 
         opts = options or TranscribeOptions()
         use_vad = self._config.vad_filter if opts.vad_filter is None else opts.vad_filter
@@ -106,71 +104,54 @@ class WhisperStt:
                 hotwords=opts.hotwords,
                 temperature=use_temperature,
                 no_speech_threshold=use_no_speech,
-                compression_ratio_threshold=2.4,
-                log_prob_threshold=-0.8,
+                compression_ratio_threshold=WHISPER_COMPRESSION_RATIO_THRESHOLD,
+                log_prob_threshold=WHISPER_LOG_PROB_THRESHOLD,
                 without_timestamps=True,
             )
-            raw_segments = list(segments_iter)
+            text = " ".join(segment.text.strip() for segment in segments_iter if segment.text.strip()).strip()
         except _WHISPER_ERRORS as error:
             raise SttError(
                 f"Failed to transcribe audio (frames={samples.shape[0]}, sample_rate={STT_SAMPLE_RATE}): {error}"
             ) from error
 
-        segments = tuple(
-            TranscriptSegment(
-                text=segment.text.strip(),
-                start=float(segment.start),
-                end=float(segment.end),
-            )
-            for segment in raw_segments
-            if segment.text and segment.text.strip()
-        )
-        text = " ".join(segment.text for segment in segments).strip()
-        duration = float(samples.shape[0] / STT_SAMPLE_RATE)
-
-        self._logger.debug(
+        _LOG.debug(
             "Transcribed %d frames -> %d chars (language=%s)",
             samples.shape[0],
             len(text),
             info.language,
         )
 
-        return Transcript(
-            text=text,
-            language=info.language or self._config.language,
-            segments=segments,
-            duration=duration,
-        )
+        return Transcript(text=text)
 
     def _device_candidates(self) -> list[tuple[str, str]]:
-        if self._config.device != "auto":
+        if self._config.device != WhisperDevice.AUTO:
             device = self._config.device
             return [(device, self._resolve_compute_type(device))]
 
         candidates: list[tuple[str, str]] = []
 
         if self._cuda_available():
-            candidates.append(("cuda", self._resolve_compute_type("cuda")))
+            candidates.append((WhisperDevice.CUDA, self._resolve_compute_type(WhisperDevice.CUDA)))
 
-        candidates.append(("cpu", self._resolve_compute_type("cpu")))
+        candidates.append((WhisperDevice.CPU, self._resolve_compute_type(WhisperDevice.CPU)))
         return candidates
 
     def _cuda_available(self) -> bool:
         try:
             import ctranslate2
 
-            return bool(ctranslate2.get_supported_compute_types("cuda"))
+            return bool(ctranslate2.get_supported_compute_types(WhisperDevice.CUDA))
         except (*_WHISPER_ERRORS, ImportError):
             return False
 
     def _resolve_compute_type(self, device: str) -> str:
-        if self._config.compute_type != "auto":
+        if self._config.compute_type != WhisperComputeType.AUTO:
             return self._config.compute_type
 
-        if device == "cuda":
-            return "float16"
+        if device == WhisperDevice.CUDA:
+            return WHISPER_CUDA_COMPUTE_TYPE
 
-        return "int8"
+        return WHISPER_CPU_COMPUTE_TYPE
 
     def _prepare_samples(self, audio: AudioData) -> NDArray[np.float32]:
         audio.format.validate()
@@ -182,6 +163,6 @@ class WhisperStt:
 
         raw = np.asarray(audio.samples, dtype=np.float32)
         if raw.ndim == 2 and raw.shape[1] > 1:
-            self._logger.warning("Downmixing %d channels to mono for Whisper", raw.shape[1])
+            _LOG.warning("Downmixing %d channels to mono for Whisper", raw.shape[1])
 
         return to_mono(raw)

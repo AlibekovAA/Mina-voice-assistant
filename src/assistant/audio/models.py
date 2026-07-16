@@ -1,18 +1,16 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
 
 from assistant.audio.exceptions import AudioError
-from assistant.config import STT_SAMPLE_RATE
+from assistant.constants import AUDIO_DEFAULT_CHANNELS, STT_SAMPLE_RATE
 
 
 @dataclass(frozen=True, slots=True)
 class AudioFormat:
     sample_rate: int = STT_SAMPLE_RATE
-    channels: int = 1
+    channels: int = AUDIO_DEFAULT_CHANNELS
 
     def validate(self) -> None:
         if self.sample_rate <= 0:
@@ -26,11 +24,3 @@ class AudioFormat:
 class AudioData:
     samples: NDArray[np.float32]
     format: AudioFormat
-
-    @property
-    def sample_rate(self) -> int:
-        return self.format.sample_rate
-
-    @property
-    def channels(self) -> int:
-        return self.format.channels

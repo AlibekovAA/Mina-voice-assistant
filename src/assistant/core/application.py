@@ -1,17 +1,20 @@
-from __future__ import annotations
-
 import signal
 import threading
 import types
 
 from assistant.audio.manager import AudioManager
+from assistant.brain import AssistantBrain, GigaChatBrain
 from assistant.config import load_config
 from assistant.core.exceptions import AssistantError
 from assistant.core.pipeline import VoicePipeline
 from assistant.logger import Logger
+from assistant.overlay import AvatarOverlay, TkAvatarOverlay
 from assistant.stt import SpeechToText, WhisperStt
+from assistant.tools import ToolRegistry
 from assistant.tts import EdgeTts, TextToSpeech
 from assistant.wake import WakeWordDetector, WhisperWakeWord
+
+_LOG = Logger.get(__name__)
 
 
 class Application:
@@ -19,7 +22,6 @@ class Application:
         Logger.configure()
 
         self._config = load_config()
-        self._logger = Logger.get(__name__)
         self._stop_event = threading.Event()
         self._interrupt_count = 0
         self._audio = AudioManager(self._config.audio)
@@ -30,89 +32,98 @@ class Application:
             self._stt,
             stop_event=self._stop_event,
         )
+        self._tools = ToolRegistry.default(
+            default_city=self._config.tools.default_city,
+            default_timezone=self._config.tools.default_timezone,
+        )
+        self._brain: AssistantBrain = GigaChatBrain(self._config.gigachat, self._tools)
+        self._overlay: AvatarOverlay = TkAvatarOverlay()
         self._pipeline = VoicePipeline(
             audio=self._audio,
             stt=self._stt,
             tts=self._tts,
             wake=self._wake,
+            brain=self._brain,
+            overlay=self._overlay,
             wake_config=self._config.wake,
             utterance_config=self._config.utterance,
             stt_config=self._config.stt,
-            assistant_name=self._config.app_name,
         )
 
     def run(self) -> None:
         previous_handler = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT, self._handle_signal)
+        pipeline_thread: threading.Thread | None = None
 
         try:
             self._initialize()
-            self._start()
+            pipeline_thread = threading.Thread(
+                target=self._run_pipeline,
+                name="voice-pipeline",
+                daemon=False,
+            )
+            pipeline_thread.start()
+            self._overlay.run()
         except AssistantError:
-            self._logger.exception("Application terminated due to an error")
+            _LOG.exception("Application terminated due to an error")
             raise
         except KeyboardInterrupt:
             self._stop_event.set()
-            self._logger.info("Application interrupted")
+            _LOG.warning("Application interrupted")
         finally:
             signal.signal(signal.SIGINT, previous_handler)
+            self._stop_event.set()
+            self._overlay.shutdown()
+            if pipeline_thread is not None:
+                pipeline_thread.join(timeout=10.0)
+                if pipeline_thread.is_alive():
+                    _LOG.warning("Voice pipeline thread is still alive")
             self._shutdown()
 
     def _handle_signal(self, _signum: int, _frame: types.FrameType | None) -> None:
         self._interrupt_count += 1
         self._stop_event.set()
+        self._overlay.shutdown()
 
         if self._interrupt_count == 1:
-            self._logger.info("Stop requested")
+            _LOG.warning("Stop requested")
             raise KeyboardInterrupt
 
-        self._logger.warning("Force exit")
+        _LOG.error("Force exit")
         raise SystemExit(130)
 
     def _initialize(self) -> None:
-        self._logger.info("Initializing application")
+        _LOG.info("Initializing application")
         self._audio.initialize()
         self._stt.initialize()
         self._tts.initialize()
         self._wake.initialize()
+        self._brain.initialize()
+        self._overlay.initialize()
 
-    def _start(self) -> None:
-        self._logger.info("%s v%s started", self._config.app_name, self._config.app_version)
-        self._log_devices()
-        self._logger.info(
-            "STT ready (model=%s, language=%s)",
-            self._config.stt.model,
-            self._config.stt.language,
-        )
-        self._logger.info("Press Ctrl+C to stop")
-        self._pipeline.run(self._stop_event)
+    def _run_pipeline(self) -> None:
+        if not self._overlay.wait_until_ready():
+            _LOG.error("Avatar overlay failed to start")
+            self._stop_event.set()
+            self._overlay.shutdown()
+            return
+
+        try:
+            _LOG.info("%s v%s started", self._config.app_name, self._config.app_version)
+            _LOG.info(
+                "STT ready (model=%s, language=%s)",
+                self._config.stt.model,
+                self._config.stt.language,
+            )
+            self._pipeline.run(self._stop_event)
+        finally:
+            self._overlay.shutdown()
 
     def _shutdown(self) -> None:
         self._stop_event.set()
-        self._audio.stop_playback()
-        self._audio.stop_capture()
         self._audio.shutdown()
         self._wake.shutdown()
+        self._brain.shutdown()
         self._tts.shutdown()
         self._stt.shutdown()
-        self._logger.info("Application stopped")
-
-    def _log_devices(self) -> None:
-        input_device = self._audio.get_default_input_device()
-        output_device = self._audio.get_default_output_device()
-
-        if input_device is not None:
-            self._logger.info(
-                "Default input: [%d] %s (%s)",
-                input_device.index,
-                input_device.name,
-                input_device.hostapi_name,
-            )
-
-        if output_device is not None:
-            self._logger.info(
-                "Default output: [%d] %s (%s)",
-                output_device.index,
-                output_device.name,
-                output_device.hostapi_name,
-            )
+        _LOG.info("Application stopped")

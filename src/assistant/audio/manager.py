@@ -1,13 +1,13 @@
-from __future__ import annotations
-
-from assistant.audio.devices import AudioDevice, AudioDeviceCatalog
+from assistant.audio.devices import AudioDeviceCatalog
 from assistant.audio.exceptions import AudioError
 from assistant.audio.models import AudioData, AudioFormat
 from assistant.audio.player import AudioPlayer
-from assistant.audio.protocol import AudioCapture, AudioPlayback
+from assistant.audio.protocol import AudioCapture, AudioPlayback, LevelCallback
 from assistant.audio.recorder import AudioRecorder
 from assistant.config import AudioConfig
 from assistant.logger import Logger
+
+_LOG = Logger.get(__name__)
 
 
 class AudioManager:
@@ -19,7 +19,6 @@ class AudioManager:
         capture: AudioCapture | None = None,
         playback: AudioPlayback | None = None,
     ) -> None:
-        self._logger = Logger.get(__name__)
         self._config = config
         self._format = AudioFormat(
             sample_rate=config.sample_rate,
@@ -35,14 +34,6 @@ class AudioManager:
     def format(self) -> AudioFormat:
         return self._format
 
-    @property
-    def is_capturing(self) -> bool:
-        return self._capture.is_active
-
-    @property
-    def is_playing(self) -> bool:
-        return self._playback.is_active
-
     def initialize(self) -> None:
         self._format.validate()
 
@@ -50,32 +41,44 @@ class AudioManager:
             raise AudioError(f"Invalid blocksize: {self._config.blocksize}")
 
         if self._input_device is not None:
-            device = self._catalog.validate_input_device(self._input_device)
-            self._logger.info(
+            configured_input = self._catalog.validate_input_device(self._input_device)
+            _LOG.info(
                 "Configured input: [%d] %s (%s)",
-                device.index,
-                device.name,
-                device.hostapi_name,
+                configured_input.index,
+                configured_input.name,
+                configured_input.hostapi_name,
             )
+        else:
+            default_input = self._catalog.get_default_input_device()
+            if default_input is not None:
+                _LOG.info(
+                    "Default input: [%d] %s (%s)",
+                    default_input.index,
+                    default_input.name,
+                    default_input.hostapi_name,
+                )
 
         if self._output_device is not None:
-            device = self._catalog.validate_output_device(self._output_device)
-            self._logger.info(
+            configured_output = self._catalog.validate_output_device(self._output_device)
+            _LOG.info(
                 "Configured output: [%d] %s (%s)",
-                device.index,
-                device.name,
-                device.hostapi_name,
+                configured_output.index,
+                configured_output.name,
+                configured_output.hostapi_name,
             )
+        else:
+            default_output = self._catalog.get_default_output_device()
+            if default_output is not None:
+                _LOG.info(
+                    "Default output: [%d] %s (%s)",
+                    default_output.index,
+                    default_output.name,
+                    default_output.hostapi_name,
+                )
 
     def shutdown(self) -> None:
         self.stop_capture()
         self.stop_playback()
-
-    def get_default_input_device(self) -> AudioDevice | None:
-        return self._catalog.get_default_input_device()
-
-    def get_default_output_device(self) -> AudioDevice | None:
-        return self._catalog.get_default_output_device()
 
     def start_capture(self) -> None:
         self._capture.start(
@@ -90,23 +93,19 @@ class AudioManager:
     def stop_capture(self) -> None:
         self._capture.stop()
 
-    def play(self, audio: AudioData) -> None:
+    def play(self, audio: AudioData, *, on_level: LevelCallback | None = None) -> None:
         was_capturing = self._capture.is_active
 
         if was_capturing:
-            self._logger.info("Pausing capture for playback")
+            _LOG.debug("Pausing capture for playback")
             self._capture.stop()
 
         try:
-            self._playback.play(audio=audio, device=self._output_device)
+            self._playback.play(audio=audio, device=self._output_device, on_level=on_level)
         finally:
             if was_capturing and not self._capture.is_active:
-                self._logger.info("Resuming capture after playback")
-                self._capture.start(
-                    self._format,
-                    device=self._input_device,
-                    blocksize=self._config.blocksize,
-                )
+                _LOG.debug("Resuming capture after playback")
+                self.start_capture()
 
     def stop_playback(self) -> None:
         self._playback.stop()

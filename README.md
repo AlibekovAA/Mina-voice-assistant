@@ -19,21 +19,52 @@
 src/
 └── assistant/
     ├── audio/
+    ├── brain/
     ├── core/
+    ├── overlay/
     ├── stt/
+    ├── tools/
     ├── tts/
     └── wake/
 ```
 
 ## Быстрый старт
 
+1. Получите Authorization Key в [GigaChat Studio](https://developers.sber.ru/portal/products/gigachat-api)
+   (base64 от `Client ID:Client Secret`).
+2. Положите ключ в `.env` (см. `.env.example`) или задайте переменную:
+
+```powershell
+$env:ASSISTANT_GIGACHAT_CREDENTIALS = "ваш_authorization_key"
+```
+
+3. Запуск:
+
 ```bash
 make install
 make run
 ```
 
-Скажи **«мина»**, затем фразу — Мина ответит голосом:
-«Привет, я голосовой помощник Мина. Вы сказали: …».
+## GigaChat
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `ASSISTANT_GIGACHAT_CREDENTIALS` | — | **обязательно**, Authorization Key |
+| `ASSISTANT_GIGACHAT_SCOPE` | `GIGACHAT_API_PERS` | версия API (физлица) |
+| `ASSISTANT_GIGACHAT_MODEL` | `GigaChat` | модель (Lite) |
+| `ASSISTANT_GIGACHAT_VERIFY_SSL` | `false` | проверка SSL (включите `true`, если установлен сертификат НУЦ Минцифры) |
+| `ASSISTANT_GIGACHAT_TIMEOUT_SECONDS` | `30` | таймаут запросов |
+| `ASSISTANT_GIGACHAT_TEMPERATURE` | `0.3` | температура |
+| `ASSISTANT_GIGACHAT_MAX_TOKENS` | `256` | лимит ответа |
+| `ASSISTANT_DEFAULT_CITY` | `Москва` | город для погоды по умолчанию |
+| `ASSISTANT_DEFAULT_TIMEZONE` | `Europe/Moscow` | часовой пояс |
+
+Tools (без отдельных API-ключей): Open-Meteo (погода), open.er-api.com (курс валют), локальный калькулятор/время, whitelist приложений ПК, выключение ассистента («выключи себя»).
+
+## Аватар
+
+После wake-слова Мина появляется в правом нижнем углу поверх всех окон.
+Во время ответа губы анимируются по громкости речи, затем аватар скрывается.
 
 ## Wake word
 
@@ -48,8 +79,6 @@ make run
 | `ASSISTANT_WAKE_BEAM_SIZE` | `5` | beam size для wake-транскрипции |
 | `ASSISTANT_WAKE_NO_SPEECH` | `0.7` | порог no_speech для wake |
 | `ASSISTANT_WAKE_VAD_FILTER` | `true` | VAD при wake-проверке |
-
-Пайплайн: wake → запись фразы до тишины → Whisper STT → Edge TTS → воспроизведение.
 
 ## Захват фразы
 
@@ -75,6 +104,7 @@ make run
 | `ASSISTANT_WHISPER_NO_SPEECH` | `0.5` | порог no_speech для команд |
 | `ASSISTANT_WHISPER_TEMPERATURE` | `0.0` | temperature |
 | `ASSISTANT_WHISPER_VAD_FILTER` | `true` | VAD при транскрипции команд |
+
 ## TTS
 
 * Движок: `edge-tts` (нейроголос Microsoft)

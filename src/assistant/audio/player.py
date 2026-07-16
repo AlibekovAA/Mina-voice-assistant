@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import threading
 
 import numpy as np
@@ -8,16 +6,21 @@ import sounddevice as sd
 
 from assistant.audio.exceptions import AudioPlaybackError
 from assistant.audio.models import AudioData
+from assistant.audio.protocol import LevelCallback
+from assistant.constants import AUDIO_LEVEL_CALLBACK_STRIDE
 from assistant.logger import Logger
+
+_LOG = Logger.get(__name__)
 
 
 class AudioPlayer:
     def __init__(self) -> None:
-        self._logger = Logger.get(__name__)
         self._stream: sd.OutputStream | None = None
         self._buffer: NDArray[np.float32] | None = None
         self._offset = 0
         self._done = threading.Event()
+        self._on_level: LevelCallback | None = None
+        self._level_tick = 0
 
     @property
     def is_active(self) -> bool:
@@ -28,6 +31,7 @@ class AudioPlayer:
         audio: AudioData,
         *,
         device: int | None = None,
+        on_level: LevelCallback | None = None,
     ) -> None:
         audio.format.validate()
 
@@ -39,6 +43,8 @@ class AudioPlayer:
         samples = self._prepare_output(audio)
         self._buffer = samples
         self._offset = 0
+        self._on_level = on_level
+        self._level_tick = 0
         self._done.clear()
 
         try:
@@ -63,10 +69,7 @@ class AudioPlayer:
 
     def stop(self) -> None:
         stream = self._stream
-        self._stream = None
-        self._buffer = None
-        self._offset = 0
-        self._done.set()
+        self._reset_state()
 
         if stream is None:
             return
@@ -85,6 +88,8 @@ class AudioPlayer:
         self._stream = None
         self._buffer = None
         self._offset = 0
+        self._on_level = None
+        self._level_tick = 0
 
         if stream is None:
             return
@@ -104,7 +109,7 @@ class AudioPlayer:
         status: object,
     ) -> None:
         if status:
-            self._logger.warning("Output stream status: %s", status)
+            _LOG.warning("Output stream status: %s", status)
 
         if self._buffer is None:
             outdata.fill(0)
@@ -117,6 +122,15 @@ class AudioPlayer:
 
         chunk_size = min(frames, remaining)
         outdata[:chunk_size] = self._buffer[self._offset : self._offset + chunk_size]
+
+        if self._on_level is not None and chunk_size > 0:
+            self._level_tick += 1
+            if self._level_tick % AUDIO_LEVEL_CALLBACK_STRIDE == 0:
+                chunk = outdata[:chunk_size]
+                if chunk.ndim == 2:
+                    chunk = chunk[:, 0]
+                level = float(np.linalg.norm(chunk) / np.sqrt(chunk.size))
+                self._on_level(level)
 
         if chunk_size < frames:
             outdata[chunk_size:].fill(0)
@@ -147,4 +161,6 @@ class AudioPlayer:
         self._stream = None
         self._buffer = None
         self._offset = 0
+        self._on_level = None
+        self._level_tick = 0
         self._done.set()
