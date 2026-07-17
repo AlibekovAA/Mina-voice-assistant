@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Self
+from typing import ClassVar, Protocol, Self
 
 from gigachat.models import Function
 
@@ -7,9 +7,17 @@ from assistant.tools.calculator import CalculatorTool
 from assistant.tools.currency import CurrencyTool
 from assistant.tools.datetime_tool import DateTimeTool
 from assistant.tools.desktop import DesktopTool
-from assistant.tools.protocol import Tool
 from assistant.tools.shutdown import ShutdownTool
 from assistant.tools.weather import WeatherTool
+
+
+class Tool(Protocol):
+    name: ClassVar[str]
+
+    @property
+    def specification(self) -> Function: ...
+
+    def execute(self, arguments: Mapping[str, object]) -> dict[str, object]: ...
 
 
 class ToolRegistry:

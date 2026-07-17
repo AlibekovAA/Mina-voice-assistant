@@ -3,8 +3,9 @@ from typing import ClassVar
 
 from gigachat.models import Function
 
-from assistant.constants import CURRENCY_CODE_ALIASES, EXCHANGE_RATE_API_URL, SUPPORTED_CURRENCIES
-from assistant.tools.http import HttpError, get_json
+from assistant.constants.tools import CURRENCY_CODE_ALIASES, EXCHANGE_RATE_API_URL, SUPPORTED_CURRENCIES
+from assistant.core.exceptions import HttpError
+from assistant.tools.http import get_json
 from assistant.tools.specs import make_function, string_param
 
 

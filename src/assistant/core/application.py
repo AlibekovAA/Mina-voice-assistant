@@ -3,51 +3,60 @@ import threading
 import types
 
 from assistant.audio.manager import AudioManager
-from assistant.brain import AssistantBrain, GigaChatBrain
+from assistant.brain.gigachat import GigaChatBrain
 from assistant.config import load_config
+from assistant.constants.audio import AUDIO_PIPELINE_JOIN_TIMEOUT_SECONDS
 from assistant.core.exceptions import AssistantError
 from assistant.core.pipeline import VoicePipeline
-from assistant.logger import Logger
-from assistant.overlay import AvatarOverlay, TkAvatarOverlay
-from assistant.stt import SpeechToText, WhisperStt
-from assistant.tools import ToolRegistry
-from assistant.tts import EdgeTts, TextToSpeech
-from assistant.wake import WakeWordDetector, WhisperWakeWord
+from assistant.logger import Logger, prepare_runtime_env
+from assistant.overlay.window import TkAvatarOverlay
+from assistant.stt.whisper import WhisperStt
+from assistant.tools.registry import ToolRegistry
+from assistant.tts.edge import EdgeTts
+from assistant.wake.whisper import WhisperWakeWord
 
 _LOG = Logger.get(__name__)
 
 
 class Application:
     def __init__(self) -> None:
+        prepare_runtime_env()
         Logger.configure()
 
-        self._config = load_config()
-        self._stop_event = threading.Event()
+        config = load_config()
+        stop_event = threading.Event()
+        audio = AudioManager(config.audio)
+        stt = WhisperStt(config.stt)
+        tts = EdgeTts(config.tts)
+        wake = WhisperWakeWord(config.wake, stt, stop_event=stop_event)
+        brain = GigaChatBrain(
+            config.gigachat,
+            ToolRegistry.default(
+                default_city=config.tools.default_city,
+                default_timezone=config.tools.default_timezone,
+            ),
+        )
+        overlay = TkAvatarOverlay()
+
+        self._config = config
+        self._stop_event = stop_event
         self._interrupt_count = 0
-        self._audio = AudioManager(self._config.audio)
-        self._stt: SpeechToText = WhisperStt(self._config.stt)
-        self._tts: TextToSpeech = EdgeTts(self._config.tts)
-        self._wake: WakeWordDetector = WhisperWakeWord(
-            self._config.wake,
-            self._stt,
-            stop_event=self._stop_event,
-        )
-        self._tools = ToolRegistry.default(
-            default_city=self._config.tools.default_city,
-            default_timezone=self._config.tools.default_timezone,
-        )
-        self._brain: AssistantBrain = GigaChatBrain(self._config.gigachat, self._tools)
-        self._overlay: AvatarOverlay = TkAvatarOverlay()
+        self._audio = audio
+        self._stt = stt
+        self._tts = tts
+        self._wake = wake
+        self._brain = brain
+        self._overlay = overlay
         self._pipeline = VoicePipeline(
-            audio=self._audio,
-            stt=self._stt,
-            tts=self._tts,
-            wake=self._wake,
-            brain=self._brain,
-            overlay=self._overlay,
-            wake_config=self._config.wake,
-            utterance_config=self._config.utterance,
-            stt_config=self._config.stt,
+            audio=audio,
+            stt=stt,
+            tts=tts,
+            wake=wake,
+            brain=brain,
+            overlay=overlay,
+            wake_config=config.wake,
+            utterance_config=config.utterance,
+            stt_config=config.stt,
         )
 
     def run(self) -> None:
@@ -67,15 +76,12 @@ class Application:
         except AssistantError:
             _LOG.exception("Application terminated due to an error")
             raise
-        except KeyboardInterrupt:
-            self._stop_event.set()
-            _LOG.warning("Application interrupted")
         finally:
             signal.signal(signal.SIGINT, previous_handler)
             self._stop_event.set()
             self._overlay.shutdown()
             if pipeline_thread is not None:
-                pipeline_thread.join(timeout=10.0)
+                pipeline_thread.join(timeout=AUDIO_PIPELINE_JOIN_TIMEOUT_SECONDS)
                 if pipeline_thread.is_alive():
                     _LOG.warning("Voice pipeline thread is still alive")
             self._shutdown()
@@ -87,7 +93,7 @@ class Application:
 
         if self._interrupt_count == 1:
             _LOG.warning("Stop requested")
-            raise KeyboardInterrupt
+            return
 
         _LOG.error("Force exit")
         raise SystemExit(130)

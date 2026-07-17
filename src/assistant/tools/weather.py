@@ -5,8 +5,9 @@ from urllib.parse import quote
 
 from gigachat.models import Function
 
-from assistant.constants import OPEN_METEO_FORECAST_URL, OPEN_METEO_GEOCODE_URL, WEATHER_CODES
-from assistant.tools.http import HttpError, get_json
+from assistant.constants.weather import OPEN_METEO_FORECAST_URL, OPEN_METEO_GEOCODE_URL, WEATHER_CODES
+from assistant.core.exceptions import HttpError
+from assistant.tools.http import get_json
 from assistant.tools.specs import make_function, string_param
 
 

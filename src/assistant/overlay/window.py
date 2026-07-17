@@ -11,7 +11,7 @@ import tkinter as tk
 import numpy as np
 from PIL import Image, ImageTk
 
-from assistant.constants import (
+from assistant.constants.overlay import (
     OVERLAY_ACTIVE_POLL_MS,
     OVERLAY_ASSETS_DIR,
     OVERLAY_AVATAR_HEIGHT,
@@ -34,8 +34,8 @@ from assistant.constants import (
     OverlayWindowExStyle,
     OverlayWindowLong,
 )
+from assistant.core.exceptions import OverlayError
 from assistant.logger import Logger
-from assistant.overlay.exceptions import OverlayError
 
 _LOG = Logger.get(__name__)
 _USER32 = ctypes.windll.user32 if sys.platform == "win32" else None
@@ -48,8 +48,6 @@ class _Command(Enum):
 
 
 class TkAvatarOverlay:
-    """Tk event loop must run on the main thread."""
-
     def __init__(
         self,
         *,
@@ -59,6 +57,7 @@ class TkAvatarOverlay:
         self._idle_path = idle_image or OVERLAY_ASSETS_DIR / OVERLAY_IDLE_IMAGE
         self._talk_path = talk_image or OVERLAY_ASSETS_DIR / OVERLAY_TALK_IMAGE
         self._commands: queue.SimpleQueue[_Command] = queue.SimpleQueue()
+        self._level_lock = threading.Lock()
         self._latest_level: float = 0.0
         self._ready = threading.Event()
         self._stopped = threading.Event()
@@ -96,15 +95,24 @@ class TkAvatarOverlay:
             _LOG.warning("Avatar overlay did not stop in time")
 
     def show(self) -> None:
-        self._latest_level = 0.0
+        self._reset_level()
         self._commands.put(_Command.SHOW)
 
     def hide(self) -> None:
-        self._latest_level = 0.0
+        self._reset_level()
         self._commands.put(_Command.HIDE)
 
     def set_level(self, level: float) -> None:
-        self._latest_level = level
+        with self._level_lock:
+            self._latest_level = level
+
+    def _reset_level(self) -> None:
+        with self._level_lock:
+            self._latest_level = 0.0
+
+    def _read_level(self) -> float:
+        with self._level_lock:
+            return self._latest_level
 
     def _run_mainloop(self) -> None:
         root = tk.Tk()
@@ -156,7 +164,7 @@ class TkAvatarOverlay:
         def animate_mouth() -> None:
             nonlocal smooth_level, mouth
             smooth_level = (OVERLAY_LEVEL_SMOOTH * smooth_level) + (
-                (1.0 - OVERLAY_LEVEL_SMOOTH) * max(0.0, self._latest_level)
+                (1.0 - OVERLAY_LEVEL_SMOOTH) * max(0.0, self._read_level())
             )
             target = _mouth_amount(smooth_level)
             mouth += (target - mouth) * OVERLAY_MOUTH_LERP
@@ -192,7 +200,7 @@ class TkAvatarOverlay:
                             if sys.platform == "win32":
                                 _enable_click_through(root)
                             visible = True
-                        self._latest_level = 0.0
+                        self._reset_level()
                         smooth_level = 0.0
                         mouth = 0.0
                         set_frame(0)
@@ -200,7 +208,7 @@ class TkAvatarOverlay:
                         if visible:
                             root.withdraw()
                             visible = False
-                        self._latest_level = 0.0
+                        self._reset_level()
                         smooth_level = 0.0
                         mouth = 0.0
                         set_frame(0)

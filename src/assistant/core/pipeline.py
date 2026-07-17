@@ -1,19 +1,27 @@
+import queue
 import threading
 import time
 
 from assistant.audio.manager import AudioManager
 from assistant.audio.models import AudioFormat
+from assistant.audio.player import PcmQueue
 from assistant.audio.utterance import UtteranceCapture
-from assistant.brain import AssistantBrain, BrainError
+from assistant.brain.gigachat import GigaChatBrain
 from assistant.config import SttConfig, UtteranceConfig, WakeConfig
-from assistant.constants import SPEECH_POST_WAKE_READ_TIMEOUT_SECONDS
+from assistant.constants.audio import (
+    AUDIO_DEFAULT_READ_TIMEOUT_SECONDS,
+    AUDIO_TTS_PRODUCER_JOIN_TIMEOUT_SECONDS,
+)
+from assistant.constants.speech import SPEECH_POST_WAKE_READ_TIMEOUT_SECONDS
+from assistant.core.exceptions import BrainError, TtsError
 from assistant.logger import Logger
-from assistant.overlay import AvatarOverlay
+from assistant.overlay.window import TkAvatarOverlay
 from assistant.prompts import BRAIN_FAILURE, NOT_HEARD
-from assistant.stt import SpeechToText, TranscribeOptions
-from assistant.tts import TextToSpeech
-from assistant.tts.exceptions import TtsError
-from assistant.wake import WakeDetection, WakeWordDetector
+from assistant.stt.models import TranscribeOptions
+from assistant.stt.whisper import WhisperStt
+from assistant.tts.edge import EdgeTts
+from assistant.wake.models import WakeDetection
+from assistant.wake.whisper import WhisperWakeWord
 
 _LOG = Logger.get(__name__)
 
@@ -23,11 +31,11 @@ class VoicePipeline:
         self,
         *,
         audio: AudioManager,
-        stt: SpeechToText,
-        tts: TextToSpeech,
-        wake: WakeWordDetector,
-        brain: AssistantBrain,
-        overlay: AvatarOverlay,
+        stt: WhisperStt,
+        tts: EdgeTts,
+        wake: WhisperWakeWord,
+        brain: GigaChatBrain,
+        overlay: TkAvatarOverlay,
         wake_config: WakeConfig,
         utterance_config: UtteranceConfig,
         stt_config: SttConfig,
@@ -50,11 +58,11 @@ class VoicePipeline:
     def run(self, stop_event: threading.Event) -> None:
         audio_format = self._audio.format
         self._audio.start_capture()
-        _LOG.info("Listening for wake word %r", self._wake_config.keyword)
+        self._log_listening()
 
         try:
             while not stop_event.is_set():
-                chunk = self._audio.read_chunk(timeout=0.1)
+                chunk = self._audio.read_chunk(timeout=AUDIO_DEFAULT_READ_TIMEOUT_SECONDS)
                 if chunk is None:
                     continue
 
@@ -70,11 +78,14 @@ class VoicePipeline:
                     break
 
                 self._wake.reset()
-                _LOG.debug("Resumed wake listening")
+                self._log_listening()
         finally:
             self._overlay.hide()
             self._audio.stop_capture()
             self._wake.reset()
+
+    def _log_listening(self) -> None:
+        _LOG.info("Waiting for wake word %r", self._wake_config.keyword)
 
     def _handle_detection(
         self,
@@ -84,6 +95,11 @@ class VoicePipeline:
     ) -> None:
         _LOG.info("Wake word detected: %r", detection.keyword)
         self._overlay.show()
+        stt_ms = 0.0
+        brain_ms = 0.0
+        tts_first_ms = 0.0
+        tts_ms = 0.0
+        play_ms = 0.0
         try:
             self._prune_post_wake(stop_event)
             if stop_event.is_set():
@@ -99,46 +115,83 @@ class VoicePipeline:
 
             if utterance is None or utterance.samples.size == 0:
                 _LOG.warning("No speech captured after wake word")
-                self._speak(NOT_HEARD, stop_event)
+                tts_first_ms, tts_ms, play_ms = self._speak(NOT_HEARD, stop_event)
                 return
 
+            started = time.perf_counter()
             transcript = self._stt.transcribe(utterance, self._command_options)
+            stt_ms = (time.perf_counter() - started) * 1000.0
             if stop_event.is_set():
                 return
 
             if not transcript.text:
                 _LOG.warning("Empty transcript")
-                self._speak(NOT_HEARD, stop_event)
+                tts_first_ms, tts_ms, play_ms = self._speak(NOT_HEARD, stop_event)
                 return
 
             _LOG.info("Heard: %s", transcript.text)
+            started = time.perf_counter()
             try:
                 reply = self._brain.reply(transcript.text)
             except BrainError:
                 _LOG.exception("Brain request failed")
                 reply = BRAIN_FAILURE
-            self._speak(reply, stop_event)
+            brain_ms = (time.perf_counter() - started) * 1000.0
+            tts_first_ms, tts_ms, play_ms = self._speak(reply, stop_event)
             if self._brain.shutdown_requested:
                 _LOG.warning("Shutdown requested by assistant")
                 stop_event.set()
         finally:
             self._overlay.hide()
+            _LOG.info(
+                "Timing: stt_ms=%.0f brain_ms=%.0f tts_first_ms=%.0f tts_ms=%.0f play_ms=%.0f",
+                stt_ms,
+                brain_ms,
+                tts_first_ms,
+                tts_ms,
+                play_ms,
+            )
 
-    def _speak(self, text: str, stop_event: threading.Event) -> None:
+    def _speak(self, text: str, stop_event: threading.Event) -> tuple[float, float, float]:
         _LOG.info("Reply: %s", text)
         if stop_event.is_set():
-            return
+            return 0.0, 0.0, 0.0
 
+        pcm_queue: PcmQueue = queue.SimpleQueue()
+        error: list[BaseException] = []
+        timing_box: list[tuple[float, float]] = [(0.0, 0.0)]
+
+        def producer() -> None:
+            try:
+                timing = self._tts.speak_stream(text, pcm_queue)
+                timing_box[0] = (timing.first_pcm_ms, timing.tts_ms)
+            except BaseException as exc:
+                error.append(exc)
+            finally:
+                pcm_queue.put(None)
+
+        producer_thread = threading.Thread(target=producer, name="tts-stream", daemon=True)
+        play_started = time.perf_counter()
+        producer_thread.start()
         try:
-            speech = self._tts.synthesize(text)
-        except TtsError as error:
-            _LOG.warning("Speech synthesis failed: %s", error)
-            return
+            self._audio.play_stream(
+                pcm_queue,
+                sample_rate=self._tts.sample_rate,
+                on_level=self._overlay.set_level,
+            )
+        finally:
+            producer_thread.join(timeout=AUDIO_TTS_PRODUCER_JOIN_TIMEOUT_SECONDS)
 
-        if stop_event.is_set():
-            return
+        play_ms = (time.perf_counter() - play_started) * 1000.0
+        if error:
+            failure = error[0]
+            if isinstance(failure, TtsError):
+                _LOG.warning("Speech synthesis failed: %s", failure)
+                return 0.0, 0.0, play_ms
+            raise failure
 
-        self._audio.play(speech, on_level=self._overlay.set_level)
+        first_ms, tts_ms = timing_box[0]
+        return first_ms, tts_ms, play_ms
 
     def _prune_post_wake(self, stop_event: threading.Event) -> None:
         deadline = time.monotonic() + self._wake_config.post_wake_prune_seconds

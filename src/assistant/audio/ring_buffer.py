@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from assistant.constants import EMPTY_AUDIO_BUFFER
+from assistant.constants.audio import EMPTY_AUDIO_BUFFER
 
 
 class RingBuffer:
@@ -11,12 +11,9 @@ class RingBuffer:
 
         self._capacity = capacity
         self._buffer = np.zeros(capacity, dtype=np.float32)
+        self._scratch = np.empty(capacity, dtype=np.float32)
         self._size = 0
         self._end = 0
-
-    @property
-    def capacity(self) -> int:
-        return self._capacity
 
     @property
     def size(self) -> int:
@@ -57,7 +54,14 @@ class RingBuffer:
 
         buffer = self._buffer
         if size < self._capacity:
-            return buffer[:size].copy()
+            return buffer[:size]
 
         start = self._end
-        return np.concatenate((buffer[start:], buffer[:start]))
+        if start == 0:
+            return buffer
+
+        scratch = self._scratch
+        first = self._capacity - start
+        scratch[:first] = buffer[start:]
+        scratch[first:] = buffer[:start]
+        return scratch

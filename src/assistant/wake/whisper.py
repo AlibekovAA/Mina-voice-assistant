@@ -9,8 +9,8 @@ from assistant.audio.dsp import rms, to_mono
 from assistant.audio.models import AudioData, AudioFormat
 from assistant.audio.ring_buffer import RingBuffer
 from assistant.config import WakeConfig
-from assistant.constants import (
-    STT_SAMPLE_RATE,
+from assistant.constants.audio import STT_SAMPLE_RATE
+from assistant.constants.wake import (
     WAKE_KEYWORD_MIN_CHARS,
     WAKE_MATCH_RATIO,
     WAKE_NOISE_EMA_ALPHA,
@@ -19,9 +19,10 @@ from assistant.constants import (
     WAKE_NOISE_QUIET_FACTOR,
     WAKE_NOISE_RMS_INITIAL,
 )
+from assistant.core.exceptions import WakeError
 from assistant.logger import Logger
-from assistant.stt import SpeechToText, TranscribeOptions
-from assistant.wake.exceptions import WakeError, WakeNotReadyError
+from assistant.stt.models import TranscribeOptions
+from assistant.stt.whisper import WhisperStt
 from assistant.wake.models import WakeDetection
 
 _LOG = Logger.get(__name__)
@@ -31,7 +32,7 @@ class WhisperWakeWord:
     def __init__(
         self,
         config: WakeConfig,
-        stt: SpeechToText,
+        stt: WhisperStt,
         *,
         stop_event: threading.Event | None = None,
     ) -> None:
@@ -54,16 +55,9 @@ class WhisperWakeWord:
             no_speech_threshold=config.no_speech_threshold,
         )
 
-    @property
-    def is_ready(self) -> bool:
-        return self._ready
-
     def initialize(self) -> None:
         if self._ready:
             return
-
-        if not self._stt.is_ready:
-            raise WakeNotReadyError("Speech-to-text must be initialized before wake word")
 
         if self._window_samples <= 0 or self._hop_samples <= 0:
             raise WakeError("Invalid wake word window/hop configuration")
@@ -90,7 +84,7 @@ class WhisperWakeWord:
 
     def feed(self, audio: AudioData) -> WakeDetection | None:
         if not self._ready:
-            raise WakeNotReadyError("Wake word detector is not initialized")
+            raise WakeError("Wake word detector is not initialized")
 
         if self._should_stop():
             return None

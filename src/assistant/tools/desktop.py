@@ -6,7 +6,7 @@ import webbrowser
 
 from gigachat.models import Function
 
-from assistant.constants import APP_NAME_ALIASES, BROWSER_DEFAULT_URL, LINUX_NOTE_PATH
+from assistant.constants.app import APP_NAME_ALIASES, BROWSER_DEFAULT_URL, LINUX_NOTE_PATH
 from assistant.tools.specs import make_function, string_param
 
 
@@ -79,4 +79,6 @@ def _open_notepad() -> None:
     if sys.platform == "darwin":
         subprocess.Popen(["open", "-a", "TextEdit"], shell=False)
         return
-    subprocess.Popen(["xdg-open", LINUX_NOTE_PATH], shell=False)
+    LINUX_NOTE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LINUX_NOTE_PATH.touch(exist_ok=True)
+    subprocess.Popen(["xdg-open", str(LINUX_NOTE_PATH)], shell=False)

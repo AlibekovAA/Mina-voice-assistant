@@ -2,12 +2,12 @@ from typing import Final
 
 WAKE_DEFAULT_KEYWORD: Final[str] = "мина"
 WAKE_DEFAULT_WINDOW_SECONDS: Final[float] = 2.0
-WAKE_DEFAULT_HOP_SECONDS: Final[float] = 1.0
-WAKE_DEFAULT_LISTEN_RMS: Final[float] = 0.008
-WAKE_DEFAULT_LISTEN_PEAK: Final[float] = 0.02
-WAKE_DEFAULT_LISTEN_SNR: Final[float] = 2.5
+WAKE_DEFAULT_HOP_SECONDS: Final[float] = 1.5
+WAKE_DEFAULT_LISTEN_RMS: Final[float] = 0.012
+WAKE_DEFAULT_LISTEN_PEAK: Final[float] = 0.03
+WAKE_DEFAULT_LISTEN_SNR: Final[float] = 3.0
 WAKE_DEFAULT_POST_PRUNE_SECONDS: Final[float] = 0.35
-WAKE_DEFAULT_BEAM_SIZE: Final[int] = 5
+WAKE_DEFAULT_BEAM_SIZE: Final[int] = 2
 WAKE_DEFAULT_VAD_FILTER: Final[bool] = True
 WAKE_DEFAULT_NO_SPEECH: Final[float] = 0.7
 WAKE_MATCH_RATIO: Final[float] = 0.72

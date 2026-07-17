@@ -1,12 +1,9 @@
-from assistant.wake.exceptions import WakeError, WakeNotReadyError
+from assistant.core.exceptions import WakeError
 from assistant.wake.models import WakeDetection
-from assistant.wake.protocol import WakeWordDetector
 from assistant.wake.whisper import WhisperWakeWord
 
 __all__ = [
     "WakeDetection",
     "WakeError",
-    "WakeNotReadyError",
-    "WakeWordDetector",
     "WhisperWakeWord",
 ]

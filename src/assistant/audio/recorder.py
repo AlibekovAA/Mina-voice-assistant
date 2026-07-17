@@ -5,13 +5,13 @@ import numpy as np
 from numpy.typing import NDArray
 import sounddevice as sd
 
-from assistant.audio.exceptions import AudioRecordingError
 from assistant.audio.models import AudioData, AudioFormat
-from assistant.constants import (
+from assistant.constants.audio import (
     AUDIO_DEFAULT_BLOCKSIZE,
     AUDIO_DEFAULT_CAPTURE_QUEUE_SIZE,
     AUDIO_DEFAULT_READ_TIMEOUT_SECONDS,
 )
+from assistant.core.exceptions import AudioRecordingError
 from assistant.logger import Logger
 
 _LOG = Logger.get(__name__)

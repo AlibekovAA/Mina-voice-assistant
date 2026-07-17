@@ -68,15 +68,18 @@ Tools (без отдельных API-ключей): Open-Meteo (погода), o
 
 ## Wake word
 
-Детект через тот же **Whisper** (скользящее окно ~2 с, проверка каждые ~1 с).
+Детект через тот же **Whisper** (скользящее окно ~2 с, проверка каждые ~1.5 с).
 Тишину отсекает RMS-порог, чтобы не гонять модель впустую.
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
 | `ASSISTANT_WAKE_KEYWORD` | `мина` | ключевое слово |
 | `ASSISTANT_WAKE_WINDOW_SECONDS` | `2.0` | окно анализа |
-| `ASSISTANT_WAKE_HOP_SECONDS` | `1.0` | шаг проверки |
-| `ASSISTANT_WAKE_BEAM_SIZE` | `5` | beam size для wake-транскрипции |
+| `ASSISTANT_WAKE_HOP_SECONDS` | `1.5` | шаг проверки |
+| `ASSISTANT_WAKE_LISTEN_RMS` | `0.012` | минимальный RMS для запуска Whisper |
+| `ASSISTANT_WAKE_LISTEN_PEAK` | `0.03` | минимальный peak для запуска Whisper |
+| `ASSISTANT_WAKE_LISTEN_SNR` | `3.0` | множитель SNR относительно шума |
+| `ASSISTANT_WAKE_BEAM_SIZE` | `2` | beam size для wake-транскрипции |
 | `ASSISTANT_WAKE_NO_SPEECH` | `0.7` | порог no_speech для wake |
 | `ASSISTANT_WAKE_VAD_FILTER` | `true` | VAD при wake-проверке |
 

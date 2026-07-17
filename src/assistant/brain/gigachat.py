@@ -5,11 +5,10 @@ from typing import Any
 from gigachat import GigaChat
 from gigachat.exceptions import GigaChatException
 from gigachat.models import Chat, Messages, MessagesRole
-import httpx
 
-from assistant.brain.exceptions import BrainError, BrainNotReadyError
 from assistant.config import GigaChatConfig
-from assistant.constants import GIGACHAT_MAX_TOOL_ROUNDS
+from assistant.constants.llm import GIGACHAT_MAX_TOOL_ROUNDS
+from assistant.core.exceptions import BrainError
 from assistant.logger import Logger
 from assistant.prompts import (
     NOT_HEARD,
@@ -18,9 +17,9 @@ from assistant.prompts import (
     SYSTEM_PROMPT,
     TOOL_ROUNDS_EXCEEDED,
 )
-from assistant.tools import ToolRegistry
+from assistant.tools.registry import ToolRegistry
 
-_GIGACHAT_ERRORS = (GigaChatException, httpx.HTTPError, OSError, ValueError, TypeError)
+_GIGACHAT_ERRORS = (GigaChatException, OSError, TimeoutError, ValueError, TypeError, RuntimeError)
 _LOG = Logger.get(__name__)
 
 
@@ -30,10 +29,6 @@ class GigaChatBrain:
         self._tools = tools
         self._client: GigaChat | None = None
         self._shutdown_requested = False
-
-    @property
-    def is_ready(self) -> bool:
-        return self._client is not None
 
     @property
     def shutdown_requested(self) -> bool:
@@ -72,7 +67,7 @@ class GigaChatBrain:
 
     def reply(self, user_text: str) -> str:
         if self._client is None:
-            raise BrainNotReadyError("GigaChat is not initialized")
+            raise BrainError("GigaChat is not initialized")
 
         text = user_text.strip()
         if not text:

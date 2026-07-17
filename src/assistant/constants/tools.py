@@ -5,6 +5,10 @@ from typing import Final
 HTTP_DEFAULT_TIMEOUT_SECONDS: Final[float] = 10.0
 HTTP_USER_AGENT: Final[str] = "MinaAssistant"
 
+CALCULATOR_MAX_EXPRESSION_LENGTH: Final[int] = 64
+CALCULATOR_MAX_ABS_EXPONENT: Final[int] = 12
+CALCULATOR_MAX_ABS_RESULT: Final[float] = 1e15
+
 EXCHANGE_RATE_API_URL: Final[str] = "https://open.er-api.com/v6/latest"
 
 CURRENCY_CODE_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
@@ -33,6 +37,9 @@ CURRENCY_CODE_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
 SUPPORTED_CURRENCIES: Final[frozenset[str]] = frozenset({"USD", "EUR", "RUB", "GBP", "CNY"})
 
 __all__ = (
+    "CALCULATOR_MAX_ABS_EXPONENT",
+    "CALCULATOR_MAX_ABS_RESULT",
+    "CALCULATOR_MAX_EXPRESSION_LENGTH",
     "CURRENCY_CODE_ALIASES",
     "EXCHANGE_RATE_API_URL",
     "HTTP_DEFAULT_TIMEOUT_SECONDS",

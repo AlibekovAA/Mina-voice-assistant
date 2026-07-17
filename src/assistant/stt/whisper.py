@@ -1,3 +1,5 @@
+import gc
+
 from faster_whisper import WhisperModel
 import numpy as np
 from numpy.typing import NDArray
@@ -5,8 +7,8 @@ from numpy.typing import NDArray
 from assistant.audio.dsp import to_mono
 from assistant.audio.models import AudioData
 from assistant.config import SttConfig
-from assistant.constants import (
-    STT_SAMPLE_RATE,
+from assistant.constants.audio import STT_SAMPLE_RATE
+from assistant.constants.whisper import (
     WHISPER_COMPRESSION_RATIO_THRESHOLD,
     WHISPER_CPU_COMPUTE_TYPE,
     WHISPER_CUDA_COMPUTE_TYPE,
@@ -14,8 +16,8 @@ from assistant.constants import (
     WhisperComputeType,
     WhisperDevice,
 )
+from assistant.core.exceptions import SttError
 from assistant.logger import Logger
-from assistant.stt.exceptions import SttError, SttNotReadyError
 from assistant.stt.models import TranscribeOptions, Transcript
 
 _WHISPER_ERRORS = (RuntimeError, ValueError, OSError, MemoryError)
@@ -26,10 +28,6 @@ class WhisperStt:
     def __init__(self, config: SttConfig) -> None:
         self._config = config
         self._model: WhisperModel | None = None
-
-    @property
-    def is_ready(self) -> bool:
-        return self._model is not None
 
     def initialize(self) -> None:
         if self._model is not None:
@@ -75,11 +73,16 @@ class WhisperStt:
         raise SttError(f"Failed to load Whisper model {self._config.model!r}: {last_error}") from last_error
 
     def shutdown(self) -> None:
+        model = self._model
         self._model = None
+        if model is None:
+            return
+        del model
+        gc.collect()
 
     def transcribe(self, audio: AudioData, options: TranscribeOptions | None = None) -> Transcript:
         if self._model is None:
-            raise SttNotReadyError("Speech-to-text is not initialized")
+            raise SttError("Speech-to-text is not initialized")
 
         samples = self._prepare_samples(audio)
         if samples.size == 0:

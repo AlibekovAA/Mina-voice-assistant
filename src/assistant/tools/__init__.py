@@ -1,5 +1,4 @@
-from assistant.tools.protocol import Tool
-from assistant.tools.registry import ToolRegistry
+from assistant.tools.registry import Tool, ToolRegistry
 
 __all__ = [
     "Tool",

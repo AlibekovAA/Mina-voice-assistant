@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from gigachat.models import Function
 
-from assistant.constants import MONTHS_RU, WEEKDAYS_RU
+from assistant.constants.app import MONTHS_RU, WEEKDAYS_RU
 from assistant.tools.specs import make_function, string_param
 
 

@@ -1,32 +1,24 @@
 from assistant.audio.devices import AudioDeviceCatalog
-from assistant.audio.exceptions import AudioError
 from assistant.audio.models import AudioData, AudioFormat
-from assistant.audio.player import AudioPlayer
-from assistant.audio.protocol import AudioCapture, AudioPlayback, LevelCallback
+from assistant.audio.player import AudioPlayer, LevelCallback, PcmQueue
 from assistant.audio.recorder import AudioRecorder
 from assistant.config import AudioConfig
+from assistant.constants.audio import AUDIO_DEFAULT_READ_TIMEOUT_SECONDS
 from assistant.logger import Logger
 
 _LOG = Logger.get(__name__)
 
 
 class AudioManager:
-    def __init__(
-        self,
-        config: AudioConfig,
-        *,
-        catalog: AudioDeviceCatalog | None = None,
-        capture: AudioCapture | None = None,
-        playback: AudioPlayback | None = None,
-    ) -> None:
+    def __init__(self, config: AudioConfig) -> None:
         self._config = config
         self._format = AudioFormat(
             sample_rate=config.sample_rate,
             channels=config.channels,
         )
-        self._catalog = catalog or AudioDeviceCatalog()
-        self._capture: AudioCapture = capture or AudioRecorder()
-        self._playback: AudioPlayback = playback or AudioPlayer()
+        self._catalog = AudioDeviceCatalog()
+        self._recorder = AudioRecorder()
+        self._player = AudioPlayer()
         self._input_device = config.input_device
         self._output_device = config.output_device
 
@@ -36,9 +28,6 @@ class AudioManager:
 
     def initialize(self) -> None:
         self._format.validate()
-
-        if self._config.blocksize < 0:
-            raise AudioError(f"Invalid blocksize: {self._config.blocksize}")
 
         if self._input_device is not None:
             configured_input = self._catalog.validate_input_device(self._input_device)
@@ -81,31 +70,57 @@ class AudioManager:
         self.stop_playback()
 
     def start_capture(self) -> None:
-        self._capture.start(
+        self._recorder.start(
             self._format,
             device=self._input_device,
             blocksize=self._config.blocksize,
         )
 
-    def read_chunk(self, *, timeout: float | None = 0.1) -> AudioData | None:
-        return self._capture.read(timeout=timeout)
+    def read_chunk(self, *, timeout: float | None = AUDIO_DEFAULT_READ_TIMEOUT_SECONDS) -> AudioData | None:
+        return self._recorder.read(timeout=timeout)
 
     def stop_capture(self) -> None:
-        self._capture.stop()
+        self._recorder.stop()
 
     def play(self, audio: AudioData, *, on_level: LevelCallback | None = None) -> None:
-        was_capturing = self._capture.is_active
+        was_capturing = self._recorder.is_active
 
         if was_capturing:
             _LOG.debug("Pausing capture for playback")
-            self._capture.stop()
+            self._recorder.stop()
 
         try:
-            self._playback.play(audio=audio, device=self._output_device, on_level=on_level)
+            self._player.play(audio=audio, device=self._output_device, on_level=on_level)
         finally:
-            if was_capturing and not self._capture.is_active:
+            if was_capturing and not self._recorder.is_active:
+                _LOG.debug("Resuming capture after playback")
+                self.start_capture()
+
+    def play_stream(
+        self,
+        pcm_queue: PcmQueue,
+        *,
+        sample_rate: int,
+        on_level: LevelCallback | None = None,
+    ) -> None:
+        was_capturing = self._recorder.is_active
+
+        if was_capturing:
+            _LOG.debug("Pausing capture for playback")
+            self._recorder.stop()
+
+        try:
+            self._player.play_stream(
+                pcm_queue,
+                sample_rate=sample_rate,
+                channels=1,
+                device=self._output_device,
+                on_level=on_level,
+            )
+        finally:
+            if was_capturing and not self._recorder.is_active:
                 _LOG.debug("Resuming capture after playback")
                 self.start_capture()
 
     def stop_playback(self) -> None:
-        self._playback.stop()
+        self._player.stop()

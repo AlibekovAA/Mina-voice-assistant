@@ -1,8 +1,8 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from assistant.audio.exceptions import AudioError
-from assistant.constants import SPEECH_TRIM_PAD_SECONDS, SPEECH_TRIM_WINDOW_SECONDS
+from assistant.constants.speech import SPEECH_TRIM_PAD_SECONDS, SPEECH_TRIM_WINDOW_SECONDS
+from assistant.core.exceptions import AudioError
 
 
 def to_mono(samples: NDArray[np.float32]) -> NDArray[np.float32]:

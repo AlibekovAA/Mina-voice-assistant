@@ -4,7 +4,7 @@ import sys
 from typing import Final, TextIO
 import warnings
 
-from assistant.constants import NOISY_LOGGERS
+from assistant.constants.logger import NOISY_LOGGERS
 
 _LEVEL_LABELS: Final[dict[int, str]] = {
     logging.DEBUG: "DBG",
@@ -13,6 +13,16 @@ _LEVEL_LABELS: Final[dict[int, str]] = {
     logging.ERROR: "ERR",
     logging.CRITICAL: "CRT",
 }
+
+
+def prepare_runtime_env() -> None:
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+    warnings.filterwarnings("ignore", message=r".*unauthenticated requests to the HF Hub.*")
+    warnings.filterwarnings("ignore", category=UserWarning, module=r"huggingface_hub(\..*)?")
 
 
 class _Formatter(logging.Formatter):
@@ -42,14 +52,6 @@ class Logger:
     def configure(cls, level: int = logging.INFO, *, stream: TextIO | None = None) -> None:
         if cls._configured:
             return
-
-        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-        os.environ.setdefault("HF_HUB_VERBOSITY", "error")
-        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-
-        warnings.filterwarnings("ignore", message=r".*unauthenticated requests to the HF Hub.*")
-        warnings.filterwarnings("ignore", category=UserWarning, module=r"huggingface_hub(\..*)?")
 
         handler = logging.StreamHandler(stream or sys.stderr)
         handler.setFormatter(_Formatter())

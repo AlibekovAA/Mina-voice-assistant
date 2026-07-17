@@ -4,27 +4,26 @@ import os
 
 from dotenv import load_dotenv
 
-from assistant.constants import (
-    APP_NAME,
-    AUDIO_DEFAULT_BLOCKSIZE,
-    AUDIO_DEFAULT_CHANNELS,
-    FALLBACK_VERSION,
+from assistant.constants.app import APP_NAME, FALLBACK_VERSION, PACKAGE_NAME
+from assistant.constants.audio import AUDIO_DEFAULT_BLOCKSIZE, AUDIO_DEFAULT_CHANNELS, STT_SAMPLE_RATE
+from assistant.constants.llm import (
     GIGACHAT_DEFAULT_MAX_TOKENS,
     GIGACHAT_DEFAULT_MODEL,
     GIGACHAT_DEFAULT_SCOPE,
     GIGACHAT_DEFAULT_TEMPERATURE,
     GIGACHAT_DEFAULT_TIMEOUT_SECONDS,
     GIGACHAT_DEFAULT_VERIFY_SSL,
-    PACKAGE_NAME,
+    GigaChatScope,
+)
+from assistant.constants.speech import (
     SPEECH_DEFAULT_MAX_SECONDS,
     SPEECH_DEFAULT_MIN_SECONDS,
     SPEECH_DEFAULT_ONSET_SECONDS,
     SPEECH_DEFAULT_RMS,
     SPEECH_DEFAULT_SILENCE_SECONDS,
-    STT_SAMPLE_RATE,
-    TTS_DEFAULT_RATE,
-    TTS_DEFAULT_SAMPLE_RATE,
-    TTS_DEFAULT_VOICE,
+)
+from assistant.constants.tts import TTS_DEFAULT_RATE, TTS_DEFAULT_SAMPLE_RATE, TTS_DEFAULT_VOICE
+from assistant.constants.wake import (
     WAKE_DEFAULT_BEAM_SIZE,
     WAKE_DEFAULT_HOP_SECONDS,
     WAKE_DEFAULT_KEYWORD,
@@ -35,8 +34,9 @@ from assistant.constants import (
     WAKE_DEFAULT_POST_PRUNE_SECONDS,
     WAKE_DEFAULT_VAD_FILTER,
     WAKE_DEFAULT_WINDOW_SECONDS,
-    WEATHER_DEFAULT_CITY,
-    WEATHER_DEFAULT_TIMEZONE,
+)
+from assistant.constants.weather import WEATHER_DEFAULT_CITY, WEATHER_DEFAULT_TIMEZONE
+from assistant.constants.whisper import (
     WHISPER_DEFAULT_BEAM_SIZE,
     WHISPER_DEFAULT_COMPUTE_TYPE,
     WHISPER_DEFAULT_CPU_THREADS,
@@ -46,7 +46,6 @@ from assistant.constants import (
     WHISPER_DEFAULT_NO_SPEECH,
     WHISPER_DEFAULT_TEMPERATURE,
     WHISPER_DEFAULT_VAD_FILTER,
-    GigaChatScope,
     WhisperDevice,
 )
 from assistant.core.exceptions import ConfigurationError
@@ -135,94 +134,97 @@ class Config:
     tools: ToolsConfig = field(default_factory=ToolsConfig)
 
 
-_DEFAULT_AUDIO = AudioConfig()
-_DEFAULT_STT = SttConfig()
-_DEFAULT_WAKE = WakeConfig()
-_DEFAULT_UTTERANCE = UtteranceConfig()
-_DEFAULT_TTS = TtsConfig()
-_DEFAULT_GIGACHAT = GigaChatConfig(credentials="")
-_DEFAULT_TOOLS = ToolsConfig()
-
-
 def load_config() -> Config:
     load_dotenv()
+
+    audio_defaults = AudioConfig()
+    stt_defaults = SttConfig()
+    wake_defaults = WakeConfig()
+    utterance_defaults = UtteranceConfig()
+    tts_defaults = TtsConfig()
+    gigachat_defaults = GigaChatConfig(credentials="")
+    tools_defaults = ToolsConfig()
+
     try:
         audio = AudioConfig(
             input_device=_optional_int("ASSISTANT_INPUT_DEVICE"),
             output_device=_optional_int("ASSISTANT_OUTPUT_DEVICE"),
-            sample_rate=_int("ASSISTANT_SAMPLE_RATE", _DEFAULT_AUDIO.sample_rate),
-            channels=_int("ASSISTANT_CHANNELS", _DEFAULT_AUDIO.channels),
-            blocksize=_int("ASSISTANT_BLOCKSIZE", _DEFAULT_AUDIO.blocksize),
+            sample_rate=_int("ASSISTANT_SAMPLE_RATE", audio_defaults.sample_rate),
+            channels=_int("ASSISTANT_CHANNELS", audio_defaults.channels),
+            blocksize=_int("ASSISTANT_BLOCKSIZE", audio_defaults.blocksize),
         )
-        language = _str("ASSISTANT_STT_LANGUAGE", _DEFAULT_STT.language)
+        language = _str("ASSISTANT_STT_LANGUAGE", stt_defaults.language)
         if language.lower() != WHISPER_DEFAULT_LANGUAGE:
             raise ConfigurationError(
                 f"Unsupported ASSISTANT_STT_LANGUAGE: {language!r} (only {WHISPER_DEFAULT_LANGUAGE!r} is supported)"
             )
 
         stt = SttConfig(
-            model=_non_empty("ASSISTANT_WHISPER_MODEL", _DEFAULT_STT.model),
+            model=_non_empty("ASSISTANT_WHISPER_MODEL", stt_defaults.model),
             language=WHISPER_DEFAULT_LANGUAGE,
-            device=_str("ASSISTANT_WHISPER_DEVICE", _DEFAULT_STT.device),
-            compute_type=_str("ASSISTANT_WHISPER_COMPUTE_TYPE", _DEFAULT_STT.compute_type) or _DEFAULT_STT.compute_type,
-            beam_size=_int("ASSISTANT_WHISPER_BEAM_SIZE", _DEFAULT_STT.beam_size),
-            vad_filter=_bool("ASSISTANT_WHISPER_VAD_FILTER", _DEFAULT_STT.vad_filter),
-            temperature=_float("ASSISTANT_WHISPER_TEMPERATURE", _DEFAULT_STT.temperature),
-            no_speech_threshold=_float("ASSISTANT_WHISPER_NO_SPEECH", _DEFAULT_STT.no_speech_threshold),
-            cpu_threads=_int("ASSISTANT_WHISPER_CPU_THREADS", _DEFAULT_STT.cpu_threads),
+            device=_str("ASSISTANT_WHISPER_DEVICE", stt_defaults.device),
+            compute_type=_str("ASSISTANT_WHISPER_COMPUTE_TYPE", stt_defaults.compute_type) or stt_defaults.compute_type,
+            beam_size=_int("ASSISTANT_WHISPER_BEAM_SIZE", stt_defaults.beam_size),
+            vad_filter=_bool("ASSISTANT_WHISPER_VAD_FILTER", stt_defaults.vad_filter),
+            temperature=_float("ASSISTANT_WHISPER_TEMPERATURE", stt_defaults.temperature),
+            no_speech_threshold=_float("ASSISTANT_WHISPER_NO_SPEECH", stt_defaults.no_speech_threshold),
+            cpu_threads=_int("ASSISTANT_WHISPER_CPU_THREADS", stt_defaults.cpu_threads),
             download_root=_optional_str("ASSISTANT_WHISPER_DOWNLOAD_ROOT"),
         )
         wake = WakeConfig(
-            keyword=_non_empty("ASSISTANT_WAKE_KEYWORD", _DEFAULT_WAKE.keyword),
-            window_seconds=_float("ASSISTANT_WAKE_WINDOW_SECONDS", _DEFAULT_WAKE.window_seconds),
-            hop_seconds=_float("ASSISTANT_WAKE_HOP_SECONDS", _DEFAULT_WAKE.hop_seconds),
-            listen_rms_threshold=_float("ASSISTANT_WAKE_LISTEN_RMS", _DEFAULT_WAKE.listen_rms_threshold),
-            listen_peak_threshold=_float("ASSISTANT_WAKE_LISTEN_PEAK", _DEFAULT_WAKE.listen_peak_threshold),
-            listen_snr=_float("ASSISTANT_WAKE_LISTEN_SNR", _DEFAULT_WAKE.listen_snr),
+            keyword=_non_empty("ASSISTANT_WAKE_KEYWORD", wake_defaults.keyword),
+            window_seconds=_float("ASSISTANT_WAKE_WINDOW_SECONDS", wake_defaults.window_seconds),
+            hop_seconds=_float("ASSISTANT_WAKE_HOP_SECONDS", wake_defaults.hop_seconds),
+            listen_rms_threshold=_float("ASSISTANT_WAKE_LISTEN_RMS", wake_defaults.listen_rms_threshold),
+            listen_peak_threshold=_float("ASSISTANT_WAKE_LISTEN_PEAK", wake_defaults.listen_peak_threshold),
+            listen_snr=_float("ASSISTANT_WAKE_LISTEN_SNR", wake_defaults.listen_snr),
             post_wake_prune_seconds=_float(
                 "ASSISTANT_WAKE_POST_WAKE_PRUNE_SECONDS",
-                _DEFAULT_WAKE.post_wake_prune_seconds,
+                wake_defaults.post_wake_prune_seconds,
             ),
-            beam_size=_int("ASSISTANT_WAKE_BEAM_SIZE", _DEFAULT_WAKE.beam_size),
-            vad_filter=_bool("ASSISTANT_WAKE_VAD_FILTER", _DEFAULT_WAKE.vad_filter),
-            no_speech_threshold=_float("ASSISTANT_WAKE_NO_SPEECH", _DEFAULT_WAKE.no_speech_threshold),
+            beam_size=_int("ASSISTANT_WAKE_BEAM_SIZE", wake_defaults.beam_size),
+            vad_filter=_bool("ASSISTANT_WAKE_VAD_FILTER", wake_defaults.vad_filter),
+            no_speech_threshold=_float("ASSISTANT_WAKE_NO_SPEECH", wake_defaults.no_speech_threshold),
         )
         utterance = UtteranceConfig(
-            speech_rms_threshold=_float("ASSISTANT_UTTERANCE_SPEECH_RMS", _DEFAULT_UTTERANCE.speech_rms_threshold),
+            speech_rms_threshold=_float("ASSISTANT_UTTERANCE_SPEECH_RMS", utterance_defaults.speech_rms_threshold),
             speech_onset_seconds=_float(
                 "ASSISTANT_UTTERANCE_SPEECH_ONSET_SECONDS",
-                _DEFAULT_UTTERANCE.speech_onset_seconds,
+                utterance_defaults.speech_onset_seconds,
             ),
-            min_speech_seconds=_float("ASSISTANT_UTTERANCE_MIN_SPEECH_SECONDS", _DEFAULT_UTTERANCE.min_speech_seconds),
-            silence_seconds=_float("ASSISTANT_UTTERANCE_SILENCE_SECONDS", _DEFAULT_UTTERANCE.silence_seconds),
+            min_speech_seconds=_float(
+                "ASSISTANT_UTTERANCE_MIN_SPEECH_SECONDS",
+                utterance_defaults.min_speech_seconds,
+            ),
+            silence_seconds=_float("ASSISTANT_UTTERANCE_SILENCE_SECONDS", utterance_defaults.silence_seconds),
             utterance_max_seconds=_float(
                 "ASSISTANT_UTTERANCE_MAX_SECONDS",
-                _DEFAULT_UTTERANCE.utterance_max_seconds,
+                utterance_defaults.utterance_max_seconds,
             ),
         )
         tts = TtsConfig(
-            voice=_non_empty("ASSISTANT_TTS_VOICE", _DEFAULT_TTS.voice),
-            rate=_str("ASSISTANT_TTS_RATE", _DEFAULT_TTS.rate) or _DEFAULT_TTS.rate,
-            sample_rate=_int("ASSISTANT_TTS_SAMPLE_RATE", _DEFAULT_TTS.sample_rate),
+            voice=_non_empty("ASSISTANT_TTS_VOICE", tts_defaults.voice),
+            rate=_str("ASSISTANT_TTS_RATE", tts_defaults.rate) or tts_defaults.rate,
+            sample_rate=_int("ASSISTANT_TTS_SAMPLE_RATE", tts_defaults.sample_rate),
         )
         gigachat = GigaChatConfig(
             credentials=_required_secret("ASSISTANT_GIGACHAT_CREDENTIALS"),
-            scope=_non_empty("ASSISTANT_GIGACHAT_SCOPE", _DEFAULT_GIGACHAT.scope),
-            model=_non_empty("ASSISTANT_GIGACHAT_MODEL", _DEFAULT_GIGACHAT.model),
+            scope=_non_empty("ASSISTANT_GIGACHAT_SCOPE", gigachat_defaults.scope),
+            model=_non_empty("ASSISTANT_GIGACHAT_MODEL", gigachat_defaults.model),
             verify_ssl_certs=_bool(
                 "ASSISTANT_GIGACHAT_VERIFY_SSL",
-                _DEFAULT_GIGACHAT.verify_ssl_certs,
+                gigachat_defaults.verify_ssl_certs,
             ),
             timeout_seconds=_float(
                 "ASSISTANT_GIGACHAT_TIMEOUT_SECONDS",
-                _DEFAULT_GIGACHAT.timeout_seconds,
+                gigachat_defaults.timeout_seconds,
             ),
-            temperature=_float("ASSISTANT_GIGACHAT_TEMPERATURE", _DEFAULT_GIGACHAT.temperature),
-            max_tokens=_int("ASSISTANT_GIGACHAT_MAX_TOKENS", _DEFAULT_GIGACHAT.max_tokens),
+            temperature=_float("ASSISTANT_GIGACHAT_TEMPERATURE", gigachat_defaults.temperature),
+            max_tokens=_int("ASSISTANT_GIGACHAT_MAX_TOKENS", gigachat_defaults.max_tokens),
         )
         tools = ToolsConfig(
-            default_city=_non_empty("ASSISTANT_DEFAULT_CITY", _DEFAULT_TOOLS.default_city),
-            default_timezone=_non_empty("ASSISTANT_DEFAULT_TIMEZONE", _DEFAULT_TOOLS.default_timezone),
+            default_city=_non_empty("ASSISTANT_DEFAULT_CITY", tools_defaults.default_city),
+            default_timezone=_non_empty("ASSISTANT_DEFAULT_TIMEZONE", tools_defaults.default_timezone),
         )
     except ValueError as error:
         raise ConfigurationError(f"Invalid configuration: {error}") from error

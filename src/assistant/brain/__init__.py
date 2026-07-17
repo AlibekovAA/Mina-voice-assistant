@@ -1,10 +1,7 @@
-from assistant.brain.exceptions import BrainError, BrainNotReadyError
 from assistant.brain.gigachat import GigaChatBrain
-from assistant.brain.protocol import AssistantBrain
+from assistant.core.exceptions import BrainError
 
 __all__ = [
-    "AssistantBrain",
     "BrainError",
-    "BrainNotReadyError",
     "GigaChatBrain",
 ]

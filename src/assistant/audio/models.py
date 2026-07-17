@@ -3,8 +3,8 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from assistant.audio.exceptions import AudioError
-from assistant.constants import AUDIO_DEFAULT_CHANNELS, STT_SAMPLE_RATE
+from assistant.constants.audio import AUDIO_DEFAULT_CHANNELS, STT_SAMPLE_RATE
+from assistant.core.exceptions import AudioError
 
 
 @dataclass(frozen=True, slots=True)

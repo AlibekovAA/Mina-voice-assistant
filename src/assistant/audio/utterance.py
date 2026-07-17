@@ -9,14 +9,15 @@ from numpy.typing import NDArray
 from assistant.audio.dsp import rms, to_mono, trim_silence
 from assistant.audio.models import AudioData, AudioFormat
 from assistant.config import UtteranceConfig
-from assistant.constants import SPEECH_TRIM_PAD_SECONDS, SPEECH_TRIM_THRESHOLD_FACTOR
+from assistant.constants.audio import AUDIO_DEFAULT_READ_TIMEOUT_SECONDS
+from assistant.constants.speech import SPEECH_TRIM_PAD_SECONDS, SPEECH_TRIM_THRESHOLD_FACTOR
 from assistant.logger import Logger
 
 _LOG = Logger.get(__name__)
 
 
 class ReadAudio(Protocol):
-    def __call__(self, *, timeout: float | None = 0.1) -> AudioData | None: ...
+    def __call__(self, *, timeout: float | None = AUDIO_DEFAULT_READ_TIMEOUT_SECONDS) -> AudioData | None: ...
 
 
 class UtteranceCapture:
@@ -38,7 +39,7 @@ class UtteranceCapture:
             if time.monotonic() - started_at >= self._config.utterance_max_seconds:
                 break
 
-            audio = read_audio(timeout=0.1)
+            audio = read_audio(timeout=AUDIO_DEFAULT_READ_TIMEOUT_SECONDS)
             if audio is None:
                 continue
 
