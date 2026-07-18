@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from importlib.metadata import PackageNotFoundError, version
 import os
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -241,6 +242,7 @@ def load_config() -> Config:
     _validate_utterance(utterance)
     _validate_tts(tts)
     _validate_gigachat(gigachat)
+    _validate_tools(tools)
 
     return Config(
         app_version=_package_version(),
@@ -306,6 +308,13 @@ def _validate_gigachat(gigachat: GigaChatConfig) -> None:
     if not 0 <= gigachat.temperature <= 2:
         raise ConfigurationError(f"Invalid ASSISTANT_GIGACHAT_TEMPERATURE: {gigachat.temperature}")
     _require_positive_int("ASSISTANT_GIGACHAT_MAX_TOKENS", gigachat.max_tokens)
+
+
+def _validate_tools(tools: ToolsConfig) -> None:
+    try:
+        ZoneInfo(tools.default_timezone)
+    except (KeyError, ValueError) as error:
+        raise ConfigurationError(f"Invalid ASSISTANT_DEFAULT_TIMEZONE: {tools.default_timezone!r}") from error
 
 
 def _required_secret(name: str) -> str:
