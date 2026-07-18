@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import queue
 import threading
 import time
@@ -24,6 +25,13 @@ from assistant.wake.models import WakeDetection
 from assistant.wake.whisper import WhisperWakeWord
 
 _LOG = Logger.get(__name__)
+
+
+@dataclass(slots=True)
+class _SpeakProducerState:
+    first_pcm_ms: float = 0.0
+    tts_ms: float = 0.0
+    error: BaseException | None = None
 
 
 class VoicePipeline:
@@ -158,15 +166,15 @@ class VoicePipeline:
             return 0.0, 0.0, 0.0
 
         pcm_queue: PcmQueue = queue.SimpleQueue()
-        error: list[BaseException] = []
-        timing_box: list[tuple[float, float]] = [(0.0, 0.0)]
+        state = _SpeakProducerState()
 
         def producer() -> None:
             try:
                 timing = self._tts.speak_stream(text, pcm_queue)
-                timing_box[0] = (timing.first_pcm_ms, timing.tts_ms)
+                state.first_pcm_ms = timing.first_pcm_ms
+                state.tts_ms = timing.tts_ms
             except BaseException as exc:
-                error.append(exc)
+                state.error = exc
             finally:
                 pcm_queue.put(None)
 
@@ -183,15 +191,13 @@ class VoicePipeline:
             producer_thread.join(timeout=AUDIO_TTS_PRODUCER_JOIN_TIMEOUT_SECONDS)
 
         play_ms = (time.perf_counter() - play_started) * 1000.0
-        if error:
-            failure = error[0]
-            if isinstance(failure, TtsError):
-                _LOG.warning("Speech synthesis failed: %s", failure)
+        if state.error is not None:
+            if isinstance(state.error, TtsError):
+                _LOG.warning("Speech synthesis failed: %s", state.error)
                 return 0.0, 0.0, play_ms
-            raise failure
+            raise state.error
 
-        first_ms, tts_ms = timing_box[0]
-        return first_ms, tts_ms, play_ms
+        return state.first_pcm_ms, state.tts_ms, play_ms
 
     def _prune_post_wake(self, stop_event: threading.Event) -> None:
         deadline = time.monotonic() + self._wake_config.post_wake_prune_seconds

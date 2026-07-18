@@ -1,11 +1,23 @@
 from dataclasses import dataclass, field
-from enum import StrEnum
 from importlib.metadata import PackageNotFoundError, version
-import os
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
+from assistant.config_env import (
+    env_bool,
+    env_enum,
+    env_float,
+    env_int,
+    env_non_empty,
+    env_optional_int,
+    env_optional_str,
+    env_str,
+    require_positive,
+    require_positive_int,
+    require_unit_interval,
+    required_secret,
+)
 from assistant.constants.app import APP_NAME, FALLBACK_VERSION, PACKAGE_NAME
 from assistant.constants.audio import AUDIO_DEFAULT_BLOCKSIZE, AUDIO_DEFAULT_CHANNELS, STT_SAMPLE_RATE
 from assistant.constants.llm import (
@@ -150,88 +162,88 @@ def load_config() -> Config:
 
     try:
         audio = AudioConfig(
-            input_device=_optional_int("ASSISTANT_INPUT_DEVICE"),
-            output_device=_optional_int("ASSISTANT_OUTPUT_DEVICE"),
-            sample_rate=_int("ASSISTANT_SAMPLE_RATE", audio_defaults.sample_rate),
-            channels=_int("ASSISTANT_CHANNELS", audio_defaults.channels),
-            blocksize=_int("ASSISTANT_BLOCKSIZE", audio_defaults.blocksize),
+            input_device=env_optional_int("ASSISTANT_INPUT_DEVICE"),
+            output_device=env_optional_int("ASSISTANT_OUTPUT_DEVICE"),
+            sample_rate=env_int("ASSISTANT_SAMPLE_RATE", audio_defaults.sample_rate),
+            channels=env_int("ASSISTANT_CHANNELS", audio_defaults.channels),
+            blocksize=env_int("ASSISTANT_BLOCKSIZE", audio_defaults.blocksize),
         )
-        language = _str("ASSISTANT_STT_LANGUAGE", stt_defaults.language)
+        language = env_str("ASSISTANT_STT_LANGUAGE", stt_defaults.language)
         if language.lower() != WHISPER_DEFAULT_LANGUAGE:
             raise ConfigurationError(
                 f"Unsupported ASSISTANT_STT_LANGUAGE: {language!r} (only {WHISPER_DEFAULT_LANGUAGE!r} is supported)"
             )
 
         stt = SttConfig(
-            model=_non_empty("ASSISTANT_WHISPER_MODEL", stt_defaults.model),
+            model=env_non_empty("ASSISTANT_WHISPER_MODEL", stt_defaults.model),
             language=WHISPER_DEFAULT_LANGUAGE,
-            device=_enum("ASSISTANT_WHISPER_DEVICE", WhisperDevice, stt_defaults.device),
-            compute_type=_enum(
+            device=env_enum("ASSISTANT_WHISPER_DEVICE", WhisperDevice, stt_defaults.device),
+            compute_type=env_enum(
                 "ASSISTANT_WHISPER_COMPUTE_TYPE",
                 WhisperComputeType,
                 stt_defaults.compute_type,
             ),
-            beam_size=_int("ASSISTANT_WHISPER_BEAM_SIZE", stt_defaults.beam_size),
-            vad_filter=_bool("ASSISTANT_WHISPER_VAD_FILTER", stt_defaults.vad_filter),
-            temperature=_float("ASSISTANT_WHISPER_TEMPERATURE", stt_defaults.temperature),
-            no_speech_threshold=_float("ASSISTANT_WHISPER_NO_SPEECH", stt_defaults.no_speech_threshold),
-            cpu_threads=_int("ASSISTANT_WHISPER_CPU_THREADS", stt_defaults.cpu_threads),
-            download_root=_optional_str("ASSISTANT_WHISPER_DOWNLOAD_ROOT"),
+            beam_size=env_int("ASSISTANT_WHISPER_BEAM_SIZE", stt_defaults.beam_size),
+            vad_filter=env_bool("ASSISTANT_WHISPER_VAD_FILTER", stt_defaults.vad_filter),
+            temperature=env_float("ASSISTANT_WHISPER_TEMPERATURE", stt_defaults.temperature),
+            no_speech_threshold=env_float("ASSISTANT_WHISPER_NO_SPEECH", stt_defaults.no_speech_threshold),
+            cpu_threads=env_int("ASSISTANT_WHISPER_CPU_THREADS", stt_defaults.cpu_threads),
+            download_root=env_optional_str("ASSISTANT_WHISPER_DOWNLOAD_ROOT"),
         )
         wake = WakeConfig(
-            keyword=_non_empty("ASSISTANT_WAKE_KEYWORD", wake_defaults.keyword),
-            window_seconds=_float("ASSISTANT_WAKE_WINDOW_SECONDS", wake_defaults.window_seconds),
-            hop_seconds=_float("ASSISTANT_WAKE_HOP_SECONDS", wake_defaults.hop_seconds),
-            listen_rms_threshold=_float("ASSISTANT_WAKE_LISTEN_RMS", wake_defaults.listen_rms_threshold),
-            listen_peak_threshold=_float("ASSISTANT_WAKE_LISTEN_PEAK", wake_defaults.listen_peak_threshold),
-            listen_snr=_float("ASSISTANT_WAKE_LISTEN_SNR", wake_defaults.listen_snr),
-            post_wake_prune_seconds=_float(
+            keyword=env_non_empty("ASSISTANT_WAKE_KEYWORD", wake_defaults.keyword),
+            window_seconds=env_float("ASSISTANT_WAKE_WINDOW_SECONDS", wake_defaults.window_seconds),
+            hop_seconds=env_float("ASSISTANT_WAKE_HOP_SECONDS", wake_defaults.hop_seconds),
+            listen_rms_threshold=env_float("ASSISTANT_WAKE_LISTEN_RMS", wake_defaults.listen_rms_threshold),
+            listen_peak_threshold=env_float("ASSISTANT_WAKE_LISTEN_PEAK", wake_defaults.listen_peak_threshold),
+            listen_snr=env_float("ASSISTANT_WAKE_LISTEN_SNR", wake_defaults.listen_snr),
+            post_wake_prune_seconds=env_float(
                 "ASSISTANT_WAKE_POST_WAKE_PRUNE_SECONDS",
                 wake_defaults.post_wake_prune_seconds,
             ),
-            beam_size=_int("ASSISTANT_WAKE_BEAM_SIZE", wake_defaults.beam_size),
-            vad_filter=_bool("ASSISTANT_WAKE_VAD_FILTER", wake_defaults.vad_filter),
-            no_speech_threshold=_float("ASSISTANT_WAKE_NO_SPEECH", wake_defaults.no_speech_threshold),
+            beam_size=env_int("ASSISTANT_WAKE_BEAM_SIZE", wake_defaults.beam_size),
+            vad_filter=env_bool("ASSISTANT_WAKE_VAD_FILTER", wake_defaults.vad_filter),
+            no_speech_threshold=env_float("ASSISTANT_WAKE_NO_SPEECH", wake_defaults.no_speech_threshold),
         )
         utterance = UtteranceConfig(
-            speech_rms_threshold=_float("ASSISTANT_UTTERANCE_SPEECH_RMS", utterance_defaults.speech_rms_threshold),
-            speech_onset_seconds=_float(
+            speech_rms_threshold=env_float("ASSISTANT_UTTERANCE_SPEECH_RMS", utterance_defaults.speech_rms_threshold),
+            speech_onset_seconds=env_float(
                 "ASSISTANT_UTTERANCE_SPEECH_ONSET_SECONDS",
                 utterance_defaults.speech_onset_seconds,
             ),
-            min_speech_seconds=_float(
+            min_speech_seconds=env_float(
                 "ASSISTANT_UTTERANCE_MIN_SPEECH_SECONDS",
                 utterance_defaults.min_speech_seconds,
             ),
-            silence_seconds=_float("ASSISTANT_UTTERANCE_SILENCE_SECONDS", utterance_defaults.silence_seconds),
-            utterance_max_seconds=_float(
+            silence_seconds=env_float("ASSISTANT_UTTERANCE_SILENCE_SECONDS", utterance_defaults.silence_seconds),
+            utterance_max_seconds=env_float(
                 "ASSISTANT_UTTERANCE_MAX_SECONDS",
                 utterance_defaults.utterance_max_seconds,
             ),
         )
         tts = TtsConfig(
-            voice=_non_empty("ASSISTANT_TTS_VOICE", tts_defaults.voice),
-            rate=_str("ASSISTANT_TTS_RATE", tts_defaults.rate) or tts_defaults.rate,
-            sample_rate=_int("ASSISTANT_TTS_SAMPLE_RATE", tts_defaults.sample_rate),
+            voice=env_non_empty("ASSISTANT_TTS_VOICE", tts_defaults.voice),
+            rate=env_str("ASSISTANT_TTS_RATE", tts_defaults.rate) or tts_defaults.rate,
+            sample_rate=env_int("ASSISTANT_TTS_SAMPLE_RATE", tts_defaults.sample_rate),
         )
         gigachat = GigaChatConfig(
-            credentials=_required_secret("ASSISTANT_GIGACHAT_CREDENTIALS"),
-            scope=_enum("ASSISTANT_GIGACHAT_SCOPE", GigaChatScope, gigachat_defaults.scope),
-            model=_non_empty("ASSISTANT_GIGACHAT_MODEL", gigachat_defaults.model),
-            verify_ssl_certs=_bool(
+            credentials=required_secret("ASSISTANT_GIGACHAT_CREDENTIALS"),
+            scope=env_enum("ASSISTANT_GIGACHAT_SCOPE", GigaChatScope, gigachat_defaults.scope),
+            model=env_non_empty("ASSISTANT_GIGACHAT_MODEL", gigachat_defaults.model),
+            verify_ssl_certs=env_bool(
                 "ASSISTANT_GIGACHAT_VERIFY_SSL",
                 gigachat_defaults.verify_ssl_certs,
             ),
-            timeout_seconds=_float(
+            timeout_seconds=env_float(
                 "ASSISTANT_GIGACHAT_TIMEOUT_SECONDS",
                 gigachat_defaults.timeout_seconds,
             ),
-            temperature=_float("ASSISTANT_GIGACHAT_TEMPERATURE", gigachat_defaults.temperature),
-            max_tokens=_int("ASSISTANT_GIGACHAT_MAX_TOKENS", gigachat_defaults.max_tokens),
+            temperature=env_float("ASSISTANT_GIGACHAT_TEMPERATURE", gigachat_defaults.temperature),
+            max_tokens=env_int("ASSISTANT_GIGACHAT_MAX_TOKENS", gigachat_defaults.max_tokens),
         )
         tools = ToolsConfig(
-            default_city=_non_empty("ASSISTANT_DEFAULT_CITY", tools_defaults.default_city),
-            default_timezone=_non_empty("ASSISTANT_DEFAULT_TIMEZONE", tools_defaults.default_timezone),
+            default_city=env_non_empty("ASSISTANT_DEFAULT_CITY", tools_defaults.default_city),
+            default_timezone=env_non_empty("ASSISTANT_DEFAULT_TIMEZONE", tools_defaults.default_timezone),
         )
     except ValueError as error:
         raise ConfigurationError(f"Invalid configuration: {error}") from error
@@ -268,46 +280,46 @@ def _validate_audio(audio: AudioConfig) -> None:
 
 
 def _validate_stt(stt: SttConfig) -> None:
-    _require_positive_int("ASSISTANT_WHISPER_BEAM_SIZE", stt.beam_size)
+    require_positive_int("ASSISTANT_WHISPER_BEAM_SIZE", stt.beam_size)
     if stt.cpu_threads < 0:
         raise ConfigurationError(f"Invalid ASSISTANT_WHISPER_CPU_THREADS: {stt.cpu_threads}")
-    _require_unit_interval("ASSISTANT_WHISPER_NO_SPEECH", stt.no_speech_threshold)
+    require_unit_interval("ASSISTANT_WHISPER_NO_SPEECH", stt.no_speech_threshold)
     if stt.temperature < 0:
         raise ConfigurationError(f"Invalid ASSISTANT_WHISPER_TEMPERATURE: {stt.temperature}")
 
 
 def _validate_wake(wake: WakeConfig) -> None:
-    _require_positive("ASSISTANT_WAKE_WINDOW_SECONDS", wake.window_seconds)
-    _require_positive("ASSISTANT_WAKE_HOP_SECONDS", wake.hop_seconds)
+    require_positive("ASSISTANT_WAKE_WINDOW_SECONDS", wake.window_seconds)
+    require_positive("ASSISTANT_WAKE_HOP_SECONDS", wake.hop_seconds)
     if wake.hop_seconds > wake.window_seconds:
         raise ConfigurationError("ASSISTANT_WAKE_HOP_SECONDS must be <= ASSISTANT_WAKE_WINDOW_SECONDS")
-    _require_positive("ASSISTANT_WAKE_LISTEN_RMS", wake.listen_rms_threshold)
-    _require_positive("ASSISTANT_WAKE_LISTEN_PEAK", wake.listen_peak_threshold)
+    require_positive("ASSISTANT_WAKE_LISTEN_RMS", wake.listen_rms_threshold)
+    require_positive("ASSISTANT_WAKE_LISTEN_PEAK", wake.listen_peak_threshold)
     if wake.listen_snr <= 1.0:
         raise ConfigurationError(f"Invalid ASSISTANT_WAKE_LISTEN_SNR: {wake.listen_snr}")
     if wake.post_wake_prune_seconds < 0:
         raise ConfigurationError(f"Invalid ASSISTANT_WAKE_POST_WAKE_PRUNE_SECONDS: {wake.post_wake_prune_seconds}")
-    _require_positive_int("ASSISTANT_WAKE_BEAM_SIZE", wake.beam_size)
-    _require_unit_interval("ASSISTANT_WAKE_NO_SPEECH", wake.no_speech_threshold)
+    require_positive_int("ASSISTANT_WAKE_BEAM_SIZE", wake.beam_size)
+    require_unit_interval("ASSISTANT_WAKE_NO_SPEECH", wake.no_speech_threshold)
 
 
 def _validate_utterance(utterance: UtteranceConfig) -> None:
-    _require_positive("ASSISTANT_UTTERANCE_SPEECH_RMS", utterance.speech_rms_threshold)
-    _require_positive("ASSISTANT_UTTERANCE_SPEECH_ONSET_SECONDS", utterance.speech_onset_seconds)
-    _require_positive("ASSISTANT_UTTERANCE_MIN_SPEECH_SECONDS", utterance.min_speech_seconds)
-    _require_positive("ASSISTANT_UTTERANCE_SILENCE_SECONDS", utterance.silence_seconds)
-    _require_positive("ASSISTANT_UTTERANCE_MAX_SECONDS", utterance.utterance_max_seconds)
+    require_positive("ASSISTANT_UTTERANCE_SPEECH_RMS", utterance.speech_rms_threshold)
+    require_positive("ASSISTANT_UTTERANCE_SPEECH_ONSET_SECONDS", utterance.speech_onset_seconds)
+    require_positive("ASSISTANT_UTTERANCE_MIN_SPEECH_SECONDS", utterance.min_speech_seconds)
+    require_positive("ASSISTANT_UTTERANCE_SILENCE_SECONDS", utterance.silence_seconds)
+    require_positive("ASSISTANT_UTTERANCE_MAX_SECONDS", utterance.utterance_max_seconds)
 
 
 def _validate_tts(tts: TtsConfig) -> None:
-    _require_positive_int("ASSISTANT_TTS_SAMPLE_RATE", tts.sample_rate)
+    require_positive_int("ASSISTANT_TTS_SAMPLE_RATE", tts.sample_rate)
 
 
 def _validate_gigachat(gigachat: GigaChatConfig) -> None:
-    _require_positive("ASSISTANT_GIGACHAT_TIMEOUT_SECONDS", gigachat.timeout_seconds)
+    require_positive("ASSISTANT_GIGACHAT_TIMEOUT_SECONDS", gigachat.timeout_seconds)
     if not 0 <= gigachat.temperature <= 2:
         raise ConfigurationError(f"Invalid ASSISTANT_GIGACHAT_TEMPERATURE: {gigachat.temperature}")
-    _require_positive_int("ASSISTANT_GIGACHAT_MAX_TOKENS", gigachat.max_tokens)
+    require_positive_int("ASSISTANT_GIGACHAT_MAX_TOKENS", gigachat.max_tokens)
 
 
 def _validate_tools(tools: ToolsConfig) -> None:
@@ -317,99 +329,8 @@ def _validate_tools(tools: ToolsConfig) -> None:
         raise ConfigurationError(f"Invalid ASSISTANT_DEFAULT_TIMEZONE: {tools.default_timezone!r}") from error
 
 
-def _required_secret(name: str) -> str:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
-        raise ConfigurationError(
-            f"{name} is required. Set it to the GigaChat Authorization Key (base64 Client ID:Client Secret)."
-        )
-    return value.strip()
-
-
-def _require_positive(name: str, value: float) -> None:
-    if value <= 0:
-        raise ConfigurationError(f"Invalid {name}: {value}")
-
-
-def _require_positive_int(name: str, value: int) -> None:
-    if value < 1:
-        raise ConfigurationError(f"Invalid {name}: {value}")
-
-
-def _require_unit_interval(name: str, value: float) -> None:
-    if not 0 < value <= 1:
-        raise ConfigurationError(f"Invalid {name}: {value}")
-
-
 def _package_version() -> str:
     try:
         return version(PACKAGE_NAME)
     except PackageNotFoundError:
         return FALLBACK_VERSION
-
-
-def _enum[E: StrEnum](name: str, enum_type: type[E], default: E) -> E:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
-        return default
-    try:
-        return enum_type(value.strip())
-    except ValueError as error:
-        allowed = ", ".join(repr(item.value) for item in enum_type)
-        raise ConfigurationError(f"Invalid {name}: {value!r} (expected one of {allowed})") from error
-
-
-def _optional_int(name: str) -> int | None:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
-        return None
-    return int(value)
-
-
-def _optional_str(name: str) -> str | None:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
-        return None
-    return value.strip()
-
-
-def _str(name: str, default: str) -> str:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
-        return default
-    return value.strip()
-
-
-def _non_empty(name: str, default: str) -> str:
-    value = _str(name, default).strip()
-    if not value:
-        raise ConfigurationError(f"{name} must not be empty")
-    return value
-
-
-def _int(name: str, default: int) -> int:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
-        return default
-    return int(value)
-
-
-def _float(name: str, default: float) -> float:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
-        return default
-    return float(value)
-
-
-def _bool(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
-        return default
-
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-
-    raise ValueError(f"Invalid boolean value for {name}: {value!r}")
