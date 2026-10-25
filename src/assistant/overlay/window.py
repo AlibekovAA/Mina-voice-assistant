@@ -11,7 +11,7 @@ from typing import Final
 import live2d.v3 as live2d
 from live2d.v3 import StandardParams
 import numpy as np
-from OpenGL.GL import GL_BACK, GL_BGRA, GL_UNSIGNED_BYTE, glFinish, glReadBuffer, glReadPixels
+from OpenGL.GL import GL_BACK, GL_BGRA, GL_UNSIGNED_BYTE, glReadBuffer, glReadPixels
 import pygame
 from pygame.locals import DOUBLEBUF, HIDDEN, NOFRAME, OPENGL
 
@@ -157,6 +157,9 @@ class _LayeredPresenter:
 
         self._width = width
         self._height = height
+        self._pixels = np.empty((height, width, 4), dtype=np.uint8)
+        self._alpha = np.empty((height, width, 1), dtype=np.float32)
+        self._rgb = np.empty((height, width, 3), dtype=np.float32)
         self._bits = ctypes.c_void_p()
         self._hdc_screen = _USER32.GetDC(0)
         self._hdc_mem = _GDI32.CreateCompatibleDC(self._hdc_screen)
@@ -192,10 +195,12 @@ class _LayeredPresenter:
 
         glReadBuffer(GL_BACK)
         raw = glReadPixels(0, 0, self._width, self._height, GL_BGRA, GL_UNSIGNED_BYTE)
-        pixels = np.frombuffer(raw, dtype=np.uint8).reshape((self._height, self._width, 4)).copy()
-        alpha = pixels[:, :, 3:4].astype(np.float32) * (1.0 / 255.0)
-        pixels[:, :, :3] = (pixels[:, :, :3].astype(np.float32) * alpha).astype(np.uint8)
-        ctypes.memmove(self._bits, pixels.ctypes.data, int(pixels.nbytes))
+        source = np.frombuffer(raw, dtype=np.uint8).reshape(self._pixels.shape)
+        np.copyto(self._pixels, source)
+        np.multiply(self._pixels[:, :, 3:4], 1.0 / 255.0, out=self._alpha)
+        np.multiply(self._pixels[:, :, :3], self._alpha, out=self._rgb)
+        np.copyto(self._pixels[:, :, :3], self._rgb, casting="unsafe")
+        ctypes.memmove(self._bits, self._pixels.ctypes.data, int(self._pixels.nbytes))
 
         destination = _Point(pos_x, pos_y)
         ok = _USER32.UpdateLayeredWindow(
@@ -377,7 +382,6 @@ class Live2dAvatarOverlay:
                     model.SetParameterValue(StandardParams.ParamMouthOpenY, mouth)
                     live2d.clearBuffer(0.0, 0.0, 0.0, 0.0)
                     model.Draw()
-                    glFinish()
                     presenter.present(overlay_hwnd, pos_x, pos_y)
                     pygame.display.flip()
                     clock.tick(OVERLAY_ACTIVE_FPS)

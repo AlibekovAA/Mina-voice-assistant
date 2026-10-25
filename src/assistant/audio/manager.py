@@ -84,9 +84,6 @@ class AudioManager:
     def stop_capture(self) -> None:
         self._recorder.stop()
 
-    def play(self, audio: AudioData, *, on_level: LevelCallback | None = None) -> None:
-        self._with_capture_paused(lambda: self._player.play(audio=audio, device=self._output_device, on_level=on_level))
-
     def play_stream(
         self,
         pcm_queue: PcmQueue,

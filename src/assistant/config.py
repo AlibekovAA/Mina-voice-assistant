@@ -70,15 +70,15 @@ from assistant.core.exceptions import ConfigurationError
 class AudioConfig:
     input_device: int | None = None
     output_device: int | None = None
-    sample_rate: int = STT_SAMPLE_RATE
-    channels: int = AUDIO_DEFAULT_CHANNELS
+    sample_rate: int = field(default=STT_SAMPLE_RATE, init=False)
+    channels: int = field(default=AUDIO_DEFAULT_CHANNELS, init=False)
     blocksize: int = AUDIO_DEFAULT_BLOCKSIZE
 
 
 @dataclass(frozen=True, slots=True)
 class SttConfig:
     model: str = WHISPER_DEFAULT_MODEL
-    language: str = WHISPER_DEFAULT_LANGUAGE
+    language: str = field(default=WHISPER_DEFAULT_LANGUAGE, init=False)
     device: WhisperDevice = WHISPER_DEFAULT_DEVICE
     compute_type: WhisperComputeType = WHISPER_DEFAULT_COMPUTE_TYPE
     beam_size: int = WHISPER_DEFAULT_BEAM_SIZE
@@ -161,22 +161,23 @@ def load_config() -> Config:
     tools_defaults = ToolsConfig()
 
     try:
+        input_device = env_optional_int("ASSISTANT_INPUT_DEVICE")
+        output_device = env_optional_int("ASSISTANT_OUTPUT_DEVICE")
+        sample_rate = env_int("ASSISTANT_SAMPLE_RATE", STT_SAMPLE_RATE)
+        channels = env_int("ASSISTANT_CHANNELS", AUDIO_DEFAULT_CHANNELS)
+        blocksize = env_int("ASSISTANT_BLOCKSIZE", audio_defaults.blocksize)
         audio = AudioConfig(
-            input_device=env_optional_int("ASSISTANT_INPUT_DEVICE"),
-            output_device=env_optional_int("ASSISTANT_OUTPUT_DEVICE"),
-            sample_rate=env_int("ASSISTANT_SAMPLE_RATE", audio_defaults.sample_rate),
-            channels=env_int("ASSISTANT_CHANNELS", audio_defaults.channels),
-            blocksize=env_int("ASSISTANT_BLOCKSIZE", audio_defaults.blocksize),
+            input_device=input_device,
+            output_device=output_device,
+            blocksize=blocksize,
         )
-        language = env_str("ASSISTANT_STT_LANGUAGE", stt_defaults.language)
+        language = env_str("ASSISTANT_STT_LANGUAGE", WHISPER_DEFAULT_LANGUAGE)
         if language.lower() != WHISPER_DEFAULT_LANGUAGE:
             raise ConfigurationError(
                 f"Unsupported ASSISTANT_STT_LANGUAGE: {language!r} (only {WHISPER_DEFAULT_LANGUAGE!r} is supported)"
             )
-
         stt = SttConfig(
             model=env_non_empty("ASSISTANT_WHISPER_MODEL", stt_defaults.model),
-            language=WHISPER_DEFAULT_LANGUAGE,
             device=env_enum("ASSISTANT_WHISPER_DEVICE", WhisperDevice, stt_defaults.device),
             compute_type=env_enum(
                 "ASSISTANT_WHISPER_COMPUTE_TYPE",
@@ -248,7 +249,7 @@ def load_config() -> Config:
     except ValueError as error:
         raise ConfigurationError(f"Invalid configuration: {error}") from error
 
-    _validate_audio(audio)
+    _validate_audio(audio, sample_rate=sample_rate, channels=channels)
     _validate_stt(stt)
     _validate_wake(wake)
     _validate_utterance(utterance)
@@ -268,13 +269,13 @@ def load_config() -> Config:
     )
 
 
-def _validate_audio(audio: AudioConfig) -> None:
-    if audio.sample_rate != STT_SAMPLE_RATE:
+def _validate_audio(audio: AudioConfig, *, sample_rate: int, channels: int) -> None:
+    if sample_rate != STT_SAMPLE_RATE:
         raise ConfigurationError(
-            f"Invalid ASSISTANT_SAMPLE_RATE: {audio.sample_rate} (Whisper STT requires {STT_SAMPLE_RATE} Hz)"
+            f"Invalid ASSISTANT_SAMPLE_RATE: {sample_rate} (Whisper STT requires {STT_SAMPLE_RATE} Hz)"
         )
-    if audio.channels != 1:
-        raise ConfigurationError(f"Invalid ASSISTANT_CHANNELS: {audio.channels} (wake word requires mono)")
+    if channels != AUDIO_DEFAULT_CHANNELS:
+        raise ConfigurationError(f"Invalid ASSISTANT_CHANNELS: {channels} (wake word requires mono)")
     if audio.blocksize < 0:
         raise ConfigurationError(f"Invalid ASSISTANT_BLOCKSIZE: {audio.blocksize}")
 

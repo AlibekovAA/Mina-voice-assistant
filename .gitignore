@@ -25,6 +25,7 @@ htmlcov/
 .vscode/
 .idea/
 .cursorrules
+AGENTS.md
 
 # OS
 .DS_Store

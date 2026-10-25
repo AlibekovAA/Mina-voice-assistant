@@ -4,9 +4,16 @@ import os
 from assistant.core.exceptions import ConfigurationError
 
 
-def required_secret(name: str) -> str:
+def _env_value(name: str) -> str | None:
     value = os.getenv(name)
     if value is None or value.strip() == "":
+        return None
+    return value
+
+
+def required_secret(name: str) -> str:
+    value = _env_value(name)
+    if value is None:
         raise ConfigurationError(
             f"{name} is required. Set it to the GigaChat Authorization Key (base64 Client ID:Client Secret)."
         )
@@ -29,8 +36,8 @@ def require_unit_interval(name: str, value: float) -> None:
 
 
 def env_enum[E: StrEnum](name: str, enum_type: type[E], default: E) -> E:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
+    value = _env_value(name)
+    if value is None:
         return default
     try:
         return enum_type(value.strip())
@@ -40,22 +47,22 @@ def env_enum[E: StrEnum](name: str, enum_type: type[E], default: E) -> E:
 
 
 def env_optional_int(name: str) -> int | None:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
+    value = _env_value(name)
+    if value is None:
         return None
     return int(value)
 
 
 def env_optional_str(name: str) -> str | None:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
+    value = _env_value(name)
+    if value is None:
         return None
     return value.strip()
 
 
 def env_str(name: str, default: str) -> str:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
+    value = _env_value(name)
+    if value is None:
         return default
     return value.strip()
 
@@ -68,22 +75,22 @@ def env_non_empty(name: str, default: str) -> str:
 
 
 def env_int(name: str, default: int) -> int:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
+    value = _env_value(name)
+    if value is None:
         return default
     return int(value)
 
 
 def env_float(name: str, default: float) -> float:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
+    value = _env_value(name)
+    if value is None:
         return default
     return float(value)
 
 
 def env_bool(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None or value.strip() == "":
+    value = _env_value(name)
+    if value is None:
         return default
 
     normalized = value.strip().lower()

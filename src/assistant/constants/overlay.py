@@ -21,10 +21,6 @@ OVERLAY_MOUTH_OPEN_LEVEL: Final[float] = 0.03
 OVERLAY_WIN_CLASS: Final[str] = "MinaLive2DOverlay"
 
 
-class OverlayWindowLong(IntEnum):
-    GWL_EXSTYLE = -20
-
-
 class OverlayWindowStyle(IntFlag):
     POPUP = 0x80000000
 
@@ -46,8 +42,6 @@ class OverlaySetWindowPos(IntFlag):
     NOSIZE = 0x0001
     NOMOVE = 0x0002
     NOACTIVATE = 0x0010
-    SHOWWINDOW = 0x0040
-    HIDEWINDOW = 0x0080
 
 
 class OverlayHwnd(IntEnum):
@@ -86,6 +80,5 @@ __all__ = (
     "OverlayShowWindow",
     "OverlayUpdateLayered",
     "OverlayWindowExStyle",
-    "OverlayWindowLong",
     "OverlayWindowStyle",
 )

@@ -27,10 +27,6 @@ class AudioRecorder:
     def is_active(self) -> bool:
         return self._stream is not None and self._stream.active
 
-    @property
-    def format(self) -> AudioFormat | None:
-        return self._format
-
     def start(
         self,
         audio_format: AudioFormat,

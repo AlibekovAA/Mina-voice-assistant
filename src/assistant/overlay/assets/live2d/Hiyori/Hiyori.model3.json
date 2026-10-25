@@ -57,13 +57,6 @@
 					"FadeInTime": 0.5,
 					"FadeOutTime": 0.5
 				}
-			],
-			"TapBody": [
-				{
-					"File": "motions/Hiyori_m04.motion3.json",
-					"FadeInTime": 0.5,
-					"FadeOutTime": 0.5
-				}
 			]
 		}
 	},

@@ -1,32 +1,65 @@
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
+import queue
+import threading
 import time
 
+from aiohttp import ClientError
 import edge_tts
 from edge_tts.exceptions import EdgeTTSException
 import miniaudio
 import numpy as np
-from numpy.typing import NDArray
 
 from assistant.audio.player import PcmQueue
 from assistant.config import TtsConfig
-from assistant.constants.tts import (
-    TTS_DEFAULT_TIMEOUT_SECONDS,
-    TTS_STREAM_DECODE_STEP_BYTES,
-    TTS_STREAM_START_BYTES,
-)
+from assistant.constants.tts import TTS_DEFAULT_TIMEOUT_SECONDS
 from assistant.core.exceptions import TtsError
 from assistant.logger import Logger
 
 _LOG = Logger.get(__name__)
-_TTS_ERRORS = (EdgeTTSException, OSError, RuntimeError, ValueError, TypeError)
+_TTS_ERRORS = (ClientError, EdgeTTSException, OSError, RuntimeError, ValueError, TypeError)
 
 
 @dataclass(slots=True)
 class StreamSpeakTiming:
     first_pcm_ms: float = 0.0
     tts_ms: float = 0.0
+
+
+@dataclass(slots=True)
+class _DecodeState:
+    error: Exception | None = None
+
+
+class _Mp3Stream:
+    def __init__(self) -> None:
+        self.ffi_handle: object = None
+        self.error_in_readcallback: Exception | None = None
+        self._chunks: queue.Queue[bytes | None] = queue.Queue()
+        self._buffer = bytearray()
+        self._finished = False
+
+    def feed(self, chunk: bytes) -> None:
+        self._chunks.put(chunk)
+
+    def finish(self) -> None:
+        self._chunks.put(None)
+
+    def read(self, num_bytes: int) -> bytes:
+        while not self._buffer and not self._finished:
+            chunk = self._chunks.get()
+            if chunk is None:
+                self._finished = True
+                break
+            self._buffer.extend(chunk)
+
+        result = bytes(self._buffer[:num_bytes])
+        del self._buffer[:num_bytes]
+        return result
+
+    def seek(self, _offset: int, _origin: object) -> bool:
+        return False
 
 
 class EdgeTts:
@@ -67,12 +100,7 @@ class EdgeTts:
         started = time.perf_counter()
         loop = asyncio.new_event_loop()
         try:
-            loop.run_until_complete(
-                asyncio.wait_for(
-                    self._stream_pcm(cleaned, pcm_queue, timing, started),
-                    timeout=TTS_DEFAULT_TIMEOUT_SECONDS,
-                )
-            )
+            loop.run_until_complete(self._stream_pcm(cleaned, pcm_queue, timing, started))
         except TtsError:
             raise
         except TimeoutError as error:
@@ -102,63 +130,77 @@ class EdgeTts:
             voice=self._config.voice,
             rate=self._config.rate,
         )
-        mp3 = bytearray()
-        emitted = 0
-        last_decode_at = 0
+        source = _Mp3Stream()
+        decode_state = _DecodeState()
+        decoder_thread: threading.Thread | None = None
 
-        async for item in communicate.stream():
-            payload = _as_mapping(item)
-            if payload.get("type") != "audio":
-                continue
+        stream = communicate.stream().__aiter__()
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(anext(stream), timeout=TTS_DEFAULT_TIMEOUT_SECONDS)
+                except StopAsyncIteration:
+                    break
 
-            data = payload.get("data")
-            if not isinstance(data, (bytes, bytearray)):
-                continue
+                payload = _as_mapping(item)
+                if payload.get("type") != "audio":
+                    continue
 
-            mp3.extend(data)
-            if len(mp3) < TTS_STREAM_START_BYTES:
-                continue
-            if len(mp3) - last_decode_at < TTS_STREAM_DECODE_STEP_BYTES:
-                continue
+                data = payload.get("data")
+                if not isinstance(data, (bytes, bytearray)):
+                    continue
+                if decoder_thread is None:
+                    decoder_thread = threading.Thread(
+                        target=self._decode_stream,
+                        args=(source, pcm_queue, timing, started, decode_state),
+                        name="tts-decode",
+                        daemon=True,
+                    )
+                    decoder_thread.start()
+                source.feed(bytes(data))
+        finally:
+            if decoder_thread is not None:
+                source.finish()
+                decoder_thread.join()
 
-            emitted = self._emit_decoded(mp3, emitted, pcm_queue, timing, started)
-            last_decode_at = len(mp3)
+        if decode_state.error is not None and not isinstance(
+            decode_state.error,
+            (miniaudio.DecodeError, miniaudio.MiniaudioError),
+        ):
+            raise decode_state.error
 
-        if not mp3:
-            return
-
-        self._emit_decoded(mp3, emitted, pcm_queue, timing, started)
-
-    def _emit_decoded(
+    def _decode_stream(
         self,
-        mp3: bytearray,
-        emitted: int,
+        source: _Mp3Stream,
         pcm_queue: PcmQueue,
         timing: StreamSpeakTiming,
         started: float,
-    ) -> int:
+        state: _DecodeState,
+    ) -> None:
         try:
-            samples = self._decode_mp3(bytes(mp3))
-        except (miniaudio.DecodeError, miniaudio.MiniaudioError):
-            return emitted
-
-        if samples.size <= emitted:
-            return emitted
-
-        chunk = np.ascontiguousarray(samples[emitted:])
-        pcm_queue.put(chunk)
-        if timing.first_pcm_ms <= 0.0:
-            timing.first_pcm_ms = (time.perf_counter() - started) * 1000.0
-        return samples.size
-
-    def _decode_mp3(self, data: bytes) -> NDArray[np.float32]:
-        decoded = miniaudio.decode(
-            data,
-            output_format=miniaudio.SampleFormat.FLOAT32,
-            nchannels=1,
-            sample_rate=self._config.sample_rate,
-        )
-        return np.frombuffer(decoded.samples, dtype=np.float32).copy()
+            chunks = miniaudio.stream_any(
+                source,
+                source_format=miniaudio.FileFormat.MP3,
+                output_format=miniaudio.SampleFormat.FLOAT32,
+                nchannels=1,
+                sample_rate=self._config.sample_rate,
+            )
+            for samples in chunks:
+                chunk = np.asarray(samples, dtype=np.float32)
+                if chunk.size == 0:
+                    continue
+                pcm_queue.put(np.ascontiguousarray(chunk))
+                if timing.first_pcm_ms <= 0.0:
+                    timing.first_pcm_ms = (time.perf_counter() - started) * 1000.0
+        except (
+            miniaudio.DecodeError,
+            miniaudio.MiniaudioError,
+            OSError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+        ) as error:
+            state.error = error
 
 
 def _as_mapping(value: object) -> Mapping[str, object]:

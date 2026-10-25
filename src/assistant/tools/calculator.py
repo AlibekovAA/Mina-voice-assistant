@@ -63,6 +63,7 @@ _UNARY_OPS: Final[dict[type[ast.unaryop], UnaryOp]] = {
     ast.UAdd: _pos,
     ast.USub: _neg,
 }
+_OPERATOR_TRANSLATION: Final[dict[int, str]] = str.maketrans({"×": "*", "÷": "/", "−": "-"})
 
 
 class CalculatorTool:
@@ -99,7 +100,7 @@ class CalculatorTool:
             return {"expression": expression, "error": "Слишком длинное выражение"}
 
         try:
-            result = _safe_eval(expression)
+            result = _safe_eval(expression.translate(_OPERATOR_TRANSLATION))
         except (SyntaxError, TypeError, ValueError, ZeroDivisionError, OverflowError, MemoryError) as error:
             return {"expression": expression, "error": str(error)}
 
@@ -124,8 +125,6 @@ def _eval_node(node: ast.AST) -> Number:
             return _safe_pow(_eval_node(left), _eval_node(right))
         case ast.BinOp(left=left, op=op, right=right) if type(op) in _BINARY_OPS:
             return _checked(_BINARY_OPS[type(op)](_eval_node(left), _eval_node(right)))
-        case ast.Expr(value=value):
-            return _eval_node(value)
         case _:
             raise ValueError("Разрешены только числа и арифметические операции")
 
